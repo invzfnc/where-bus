@@ -7,7 +7,8 @@ import { LocateFixed } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import { Stop, Route } from '@/app/page';
 
-const UM_POSITION: [number, number] = [3.1209, 101.6538];
+// Updated coordinates to point to FSKTM, Universiti Malaya
+const FSKTM_POSITION: [number, number] = [3.1280, 101.6505];
 
 const MinimalGrayIcon = L.divIcon({
   className: 'bg-transparent',
@@ -28,14 +29,9 @@ function MapUpdater({ center, zoom, isOffset }: { center: [number, number]; zoom
     let targetLatLng = L.latLng(center[0], center[1]);
 
     if (isOffset) {
-      // Convert geographical coordinates to screen pixels at the target zoom
       const targetPoint = map.project(targetLatLng, zoom);
-      
-      // Shift the camera's center DOWN (+y) by 25vh, which forces the target point UP on the screen
       const offsetPixels = window.innerHeight / 4;
       targetPoint.y += offsetPixels;
-      
-      // Convert the pixels back to geographical coordinates
       targetLatLng = map.unproject(targetPoint, zoom);
     }
 
@@ -46,11 +42,14 @@ function MapUpdater({ center, zoom, isOffset }: { center: [number, number]; zoom
   return null;
 }
 
-function RecenterControl() {
+/**
+ * Recenter button that uses a dynamic target position (user location or default).
+ */
+function RecenterControl({ targetPosition }: { targetPosition: [number, number] }) {
   const map = useMap();
   return (
     <button 
-      onClick={() => map.flyTo(UM_POSITION, 15)}
+      onClick={() => map.flyTo(targetPosition, 15)}
       className="absolute bottom-[55vh] right-4 z-[400] bg-white p-3 rounded-full shadow-md text-gray-600 hover:text-black transition-all border border-gray-200"
     >
       <LocateFixed size={24} />
@@ -65,7 +64,27 @@ interface LiveMapProps {
 
 export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
   const [routeStops, setRouteStops] = useState<Stop[]>([]);
+  // Use FSKTM as the initial default state
+  const [userLocation, setUserLocation] = useState<[number, number]>(FSKTM_POSITION);
+  const [hasUserLocation, setHasUserLocation] = useState(false);
 
+  // Request browser geolocation on mount
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation([position.coords.latitude, position.coords.longitude]);
+          setHasUserLocation(true);
+        },
+        (error) => {
+          console.warn("Geolocation permission denied or failed. Using default location.", error.message);
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+      );
+    }
+  }, []);
+
+  // Fetch the physical polyline path when a route is selected
   useEffect(() => {
     if (selectedRoute) {
       fetch(`http://localhost:8080/api/transit/routes/${selectedRoute.id}/path`)
@@ -79,7 +98,7 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
     }
   }, [selectedRoute]);
 
-  let currentCenter = UM_POSITION;
+  let currentCenter = userLocation;
   let currentZoom = 15;
   let applyOffset = false;
 
@@ -120,7 +139,6 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
           />
         )}
 
-        {/* Use high-performance SVG CircleMarkers for bulk route stops to prevent DOM lag */}
         {routeStops.map((stop, index) => (
           <CircleMarker 
             key={`${stop.id}-${index}`} 
@@ -138,13 +156,26 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
           </Marker>
         )}
 
-        {!selectedStop && !selectedRoute && (
-          <Marker position={UM_POSITION} icon={MinimalGrayIcon}>
-            <Popup>Masjid Ar-Rahman (Default)</Popup>
+        {/* Always draw a distinctive blue dot if the user's live location is known */}
+        {hasUserLocation && (
+          <CircleMarker 
+            center={userLocation} 
+            radius={7}
+            pathOptions={{ color: 'white', fillColor: '#3b82f6', fillOpacity: 1, weight: 3 }}
+          >
+            <Popup>Your Location</Popup>
+          </CircleMarker>
+        )}
+
+        {/* Only show the default FSKTM fallback if we don't have user location and nothing is searched */}
+        {!selectedStop && !selectedRoute && !hasUserLocation && (
+          <Marker position={FSKTM_POSITION} icon={MinimalGrayIcon}>
+            <Popup>FSKTM, Universiti Malaya (Default)</Popup>
           </Marker>
         )}
 
-        <RecenterControl />
+        {/* Pass the dynamic target position to the recenter button */}
+        <RecenterControl targetPosition={userLocation} />
       </MapContainer>
     </div>
   );
