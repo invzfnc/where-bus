@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { LocateFixed } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import { Stop, Route } from '@/app/page';
 
-// Marker
+const UM_POSITION: [number, number] = [3.1209, 101.6538];
+
 const MinimalGrayIcon = L.divIcon({
   className: 'bg-transparent',
   html: `<div style="width: 14px; height: 14px; background-color: #374151; border: 2px solid white; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.2);"></div>`,
@@ -15,18 +16,36 @@ const MinimalGrayIcon = L.divIcon({
   iconAnchor: [7, 7],
 });
 
-const UM_POSITION: [number, number] = [3.1209, 101.6538];
-
-// Helper Component to Animate Map Movement
-function MapUpdater({ center, zoom }: { center: [number, number], zoom: number }) {
+/**
+ * Handles smooth camera animations and applies a mathematical offset
+ * so the target coordinates appear in the top 25vh of the screen,
+ * preventing the Bottom Sheet from covering the focal point.
+ */
+function MapUpdater({ center, zoom, isOffset }: { center: [number, number]; zoom: number; isOffset: boolean }) {
   const map = useMap();
+  
   useEffect(() => {
-    map.flyTo(center, zoom, { duration: 1.5 });
-  }, [center, zoom, map]);
+    let targetLatLng = L.latLng(center[0], center[1]);
+
+    if (isOffset) {
+      // Convert geographical coordinates to screen pixels at the target zoom
+      const targetPoint = map.project(targetLatLng, zoom);
+      
+      // Shift the camera's center DOWN (+y) by 25vh, which forces the target point UP on the screen
+      const offsetPixels = window.innerHeight / 4;
+      targetPoint.y += offsetPixels;
+      
+      // Convert the pixels back to geographical coordinates
+      targetLatLng = map.unproject(targetPoint, zoom);
+    }
+
+    map.flyTo(targetLatLng, zoom, { duration: 1.5 });
+    
+  }, [center[0], center[1], zoom, isOffset, map]);
+
   return null;
 }
 
-// Helper Component for the Recenter Button
 function RecenterControl() {
   const map = useMap();
   return (
@@ -45,7 +64,6 @@ interface LiveMapProps {
 }
 
 export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
-  // We now store the full Stop objects instead of just coordinates
   const [routeStops, setRouteStops] = useState<Stop[]>([]);
 
   useEffect(() => {
@@ -53,7 +71,7 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
       fetch(`http://localhost:8080/api/transit/routes/${selectedRoute.id}/path`)
         .then(res => res.json())
         .then((data: Stop[]) => {
-          setRouteStops(data); // Save the entire array of stops
+          setRouteStops(data);
         })
         .catch(err => console.error("Failed to fetch route path", err));
     } else {
@@ -63,16 +81,18 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
 
   let currentCenter = UM_POSITION;
   let currentZoom = 15;
+  let applyOffset = false;
 
   if (selectedStop) {
     currentCenter = [selectedStop.latitude, selectedStop.longitude];
     currentZoom = 17; 
+    applyOffset = true;
   } else if (routeStops.length > 0) {
     currentCenter = [routeStops[0].latitude, routeStops[0].longitude];
     currentZoom = 14; 
+    applyOffset = true;
   }
 
-  // Extract just the coordinates for the Polyline to draw the continuous path
   const polylineCoords: [number, number][] = routeStops.map(stop => [stop.latitude, stop.longitude]);
 
   return (
@@ -88,36 +108,38 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
           attribution='&copy; OSM & CARTO'
         />
         
-        <MapUpdater center={currentCenter} zoom={currentZoom} />
+        <MapUpdater center={currentCenter} zoom={currentZoom} isOffset={applyOffset} />
         
-        {/* Draw the Route Line in minimalist grey */}
         {polylineCoords.length > 0 && (
           <Polyline 
             positions={polylineCoords} 
-            color="#374151" // Matches the minimalist grey icon
+            color="#374151" 
             weight={4} 
             opacity={0.8} 
-            dashArray="8, 6" // makes the line dashed to look like a transit map
+            dashArray="8, 6"
           />
         )}
 
-        {/* Render a marker for EVERY stop on the route */}
+        {/* Use high-performance SVG CircleMarkers for bulk route stops to prevent DOM lag */}
         {routeStops.map((stop, index) => (
-          <Marker key={`${stop.id}-${index}`} position={[stop.latitude, stop.longitude]} icon={MinimalGrayIcon}>
+          <CircleMarker 
+            key={`${stop.id}-${index}`} 
+            center={[stop.latitude, stop.longitude]} 
+            radius={5}
+            pathOptions={{ color: 'white', fillColor: '#374151', fillOpacity: 1, weight: 2 }}
+          >
             <Popup>{stop.name}</Popup>
-          </Marker>
+          </CircleMarker>
         ))}
 
-        {/* Draw the single Selected Stop Marker (if the user searched for a specific stop) */}
         {selectedStop && (
           <Marker position={[selectedStop.latitude, selectedStop.longitude]} icon={MinimalGrayIcon}>
             <Popup>{selectedStop.name}</Popup>
           </Marker>
         )}
 
-        {/* Only draw default UM markers if nothing is actively selected */}
         {!selectedStop && !selectedRoute && (
-          <Marker position={[3.1209, 101.6538]} icon={MinimalGrayIcon}>
+          <Marker position={UM_POSITION} icon={MinimalGrayIcon}>
             <Popup>Masjid Ar-Rahman (Default)</Popup>
           </Marker>
         )}
