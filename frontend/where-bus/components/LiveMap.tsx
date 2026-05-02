@@ -167,11 +167,15 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
           </CircleMarker>
         )}
 
-        {/* Only show the default FSKTM fallback if we don't have user location and nothing is searched */}
-        {!selectedStop && !selectedRoute && !hasUserLocation && (
-          <Marker position={FSKTM_POSITION} icon={MinimalGrayIcon}>
+        {/* Show the default FSKTM fallback if we don't have user location */}
+        {!hasUserLocation && (
+          <CircleMarker 
+            center={FSKTM_POSITION} 
+            radius={7}
+            pathOptions={{ color: 'white', fillColor: '#484849', fillOpacity: 1, weight: 3 }}
+          >
             <Popup>FSKTM, Universiti Malaya (Default)</Popup>
-          </Marker>
+          </CircleMarker>
         )}
 
         {/* Pass the dynamic target position to the recenter button */}
