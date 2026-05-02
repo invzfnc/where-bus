@@ -156,12 +156,12 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
           </Marker>
         )}
 
-        {/* Always draw a distinctive blue dot if the user's live location is known */}
+        {/* Always draw a distinctive grey dot if the user's live location is known */}
         {hasUserLocation && (
           <CircleMarker 
             center={userLocation} 
             radius={7}
-            pathOptions={{ color: 'white', fillColor: '#3b82f6', fillOpacity: 1, weight: 3 }}
+            pathOptions={{ color: 'white', fillColor: '#484849', fillOpacity: 1, weight: 3 }}
           >
             <Popup>Your Location</Popup>
           </CircleMarker>
