@@ -51,7 +51,7 @@ export default function BottomSheet({ isOpen, onClose, selectedStop, selectedRou
                 {/* Phase 6 Placeholder */}
                 <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl flex flex-col items-center justify-center text-gray-400 py-8">
                   <Bus size={24} className="mb-2 opacity-50" />
-                  <p className="text-sm text-center">Real-time ETAs will appear here once live tracking is connected.</p>
+                  <p className="text-sm text-center">Real-time ETAs will appear here when live tracking is connected.</p>
                 </div>
               </>
             )}
@@ -67,7 +67,7 @@ export default function BottomSheet({ isOpen, onClose, selectedStop, selectedRou
                 
                 <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl text-blue-700 text-sm flex items-center leading-relaxed">
                   <MapPin size={20} className="mr-3 shrink-0" />
-                  The map is now displaying this route's path. Select a specific stop on the map to view arriving buses.
+                  The map is now displaying this route path. Select a specific stop on the map to view arriving buses.
                 </div>
               </>
             )}

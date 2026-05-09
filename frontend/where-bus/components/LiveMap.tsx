@@ -24,9 +24,10 @@ const MinimalGrayIcon = L.divIcon({
  */
 function MapUpdater({ center, zoom, isOffset }: { center: [number, number]; zoom: number; isOffset: boolean }) {
   const map = useMap();
+  const [centerLat, centerLng] = center;
   
   useEffect(() => {
-    let targetLatLng = L.latLng(center[0], center[1]);
+    let targetLatLng = L.latLng(centerLat, centerLng);
 
     if (isOffset) {
       const targetPoint = map.project(targetLatLng, zoom);
@@ -53,8 +54,7 @@ function MapUpdater({ center, zoom, isOffset }: { center: [number, number]; zoom
     }, 100);
 
     return () => clearTimeout(timeout);
-
-  }, [center[0], center[1], zoom, isOffset, map]);
+  }, [centerLat, centerLng, zoom, isOffset, map]);
 
   return null;
 }
@@ -101,19 +101,29 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
     }
   }, []);
 
+  const selectedRouteId = selectedRoute?.id;
+
   // Fetch the physical polyline path when a route is selected
   useEffect(() => {
-    if (selectedRoute) {
-      fetch(`/api/transit/routes/${selectedRoute.id}/path`)
+    if (!selectedRouteId) {
+      return;
+    }
+
+    let isCurrent = true;
+
+    fetch(`/api/transit/routes/${selectedRouteId}/path`)
         .then(res => res.json())
         .then((data: Stop[]) => {
-          setRouteStops(data);
+          if (isCurrent) {
+            setRouteStops(data);
+          }
         })
         .catch(err => console.error("Failed to fetch route path", err));
-    } else {
-      setRouteStops([]); 
-    }
-  }, [selectedRoute]);
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedRouteId]);
 
   let currentCenter = userLocation;
   let currentZoom = 15;
@@ -123,13 +133,14 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
     currentCenter = [selectedStop.latitude, selectedStop.longitude];
     currentZoom = 17; 
     applyOffset = true;
-  } else if (routeStops.length > 0) {
+  } else if (selectedRoute && routeStops.length > 0) {
     currentCenter = [routeStops[0].latitude, routeStops[0].longitude];
     currentZoom = 14; 
     applyOffset = true;
   }
 
-  const polylineCoords: [number, number][] = routeStops.map(stop => [stop.latitude, stop.longitude]);
+  const visibleRouteStops = selectedRoute ? routeStops : [];
+  const polylineCoords: [number, number][] = visibleRouteStops.map(stop => [stop.latitude, stop.longitude]);
 
   return (
     <div className="relative w-full h-full bg-gray-100">
@@ -156,7 +167,7 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
           />
         )}
 
-        {routeStops.map((stop, index) => (
+        {visibleRouteStops.map((stop, index) => (
           <CircleMarker 
             key={`${stop.id}-${index}`} 
             center={[stop.latitude, stop.longitude]} 
