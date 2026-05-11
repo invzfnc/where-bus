@@ -1,14 +1,24 @@
 package com.wherebus.models;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 /**
  * Represents a physical bus stop within the transit network.
  * This object is used as a vertex (node) within the routing Graph and
  * is stored in a Hash Table for fast O(1) lookups.
  */
+@Schema(description = "Entity representing a physical transit stop or station along a route.")
 public class Stop {
+    @Schema(description = "Unique system identifier for the stop.", example = "1001410")
     private String id;
+
+    @Schema(description = "Public display name of the transit stop.", example = "KL1441 KL GATEWAY - LRT UNIVERSITI,L/RAYA PERSEKUTUAN")
     private String name;
+
+    @Schema(description = "Geographic latitude coordinate.", example = "3.1147")
     private double latitude;
+
+    @Schema(description = "Geographic longitude coordinate.", example = "101.6618")
     private double longitude;
 
     /**

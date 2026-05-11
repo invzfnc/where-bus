@@ -1,12 +1,20 @@
 package com.wherebus.models;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 /**
  * Represents a specific transit service line.
  * Routes are used to associate moving buses with their predefined stop sequences.
  */
+@Schema(description = "Entity representing a static transit route service.")
 public class Route {
+    @Schema(description = "Short alphanumeric code identifying the route.", example = "T7890")
     private String id;
+
+    @Schema(description = "Standard display name for the route.", example = "T789")
     private String name;
+
+    @Schema(description = "Full descriptive terminal-to-terminal route string.", example = "Stesen LRT Universiti ~ Universiti Malaya via Pantai Hillpark")
     private String longName;
 
     /**
