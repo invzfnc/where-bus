@@ -2,34 +2,35 @@ package com.wherebus.controllers;
 
 import com.wherebus.models.Route;
 import com.wherebus.models.Stop;
+import com.wherebus.services.EtaCalculationService;
 import com.wherebus.services.TransitService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 
 /**
- * REST Controller for serving static transit data to the frontend.
- * Allows the client app to search for routes, stops, and retrieve geographic paths.
+ * REST Controller serving both static transit structures and real-time arrival predictions.
  */
 @RestController
 @RequestMapping("/api/transit")
-@CrossOrigin(origins = "http://localhost:3000") // Allows Next.js to fetch data without being blocked
+@CrossOrigin(origins = "http://localhost:3000") // Allows Next.js to fetch data without CORS blocks
 public class TransitController {
 
     private final TransitService transitService;
+    private final EtaCalculationService etaCalculationService;
 
-    // Spring automatically injects the TransitService here
-    public TransitController(TransitService transitService) {
+    public TransitController(TransitService transitService, EtaCalculationService etaCalculationService) {
         this.transitService = transitService;
+        this.etaCalculationService = etaCalculationService;
     }
 
     /**
-     * 1. THE QUICK TEST ENDPOINT
-     * Hit http://localhost:8080/api/transit/test to verify the service is injected properly.
+     * Quick verification endpoint to confirm core dependency injection.
+     * Example: GET http://localhost:8080/api/transit/test
      */
     @GetMapping("/test")
     public String testDataLink() {
@@ -41,8 +42,8 @@ public class TransitController {
     }
 
     /**
-     * Retrieves the basic details of a specific route.
-     * Example: GET /api/transit/routes/B1000
+     * Retrieves basic descriptive details for a specific route.
+     * Example: GET /api/transit/routes/T789
      */
     @GetMapping("/routes/{routeId}")
     public Route getRouteDetails(@PathVariable String routeId) {
@@ -50,10 +51,8 @@ public class TransitController {
     }
 
     /**
-     * Retrieves the exact sequence of stops for a given route.
-     * This converts the linked list of string IDs into a list of actual Stop objects
-     * (containing latitudes and longitudes) so the Next.js map can draw the line.
-     * * Example: GET /api/transit/routes/B1000/path
+     * Retrieves the exact ordered sequence of physical stops for a given route path.
+     * Example: GET /api/transit/routes/T789/path
      */
     @GetMapping("/routes/{routeId}/path")
     public List<Stop> getRoutePath(@PathVariable String routeId) {
@@ -61,10 +60,9 @@ public class TransitController {
         List<Stop> path = new ArrayList<>();
 
         if (stopIds == null) {
-            return path; // Return empty list if route doesn't exist
+            return path;
         }
 
-        // Loop through the linked list and fetch the actual coordinate data from the hash table
         for (String stopId : stopIds) {
             Stop stop = transitService.getStopById(stopId);
             if (stop != null) {
@@ -76,7 +74,7 @@ public class TransitController {
     }
 
     /**
-     * Unified search endpoint for stops and routes.
+     * Unified search endpoint querying both stops and routes via string matching.
      * Example: GET /api/transit/search?q=Masjid
      */
     @GetMapping("/search")
@@ -93,5 +91,16 @@ public class TransitController {
         response.put("routes", transitService.searchRoutes(q));
 
         return response;
+    }
+
+    /**
+     * Computes and returns real-time approaching vehicles sorted by lowest ETA via a Priority Queue.
+     * Example: GET /api/transit/eta?routeId=T789&stopId=100432
+     */
+    @GetMapping("/eta")
+    public List<Map<String, Object>> getRealtimeEta(
+            @RequestParam String routeId,
+            @RequestParam String stopId) {
+        return etaCalculationService.getArrivalsForStop(routeId, stopId);
     }
 }
