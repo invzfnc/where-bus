@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bus, MapPin, Route as RouteIcon } from 'lucide-react';
 import { Stop, Route } from '@/app/page';
@@ -11,33 +12,60 @@ interface BottomSheetProps {
   selectedRoute: Route | null;
 }
 
+// Custom hook to detect screen size for Framer Motion animations
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    // 768px matches Tailwind's 'md:' breakpoint
+    const mediaQuery = window.matchMedia('(min-width: 768px)');
+    setIsDesktop(mediaQuery.matches);
+
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mediaQuery.addEventListener('change', handler);
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  return isDesktop;
+}
+
 export default function BottomSheet({ isOpen, onClose, selectedStop, selectedRoute }: BottomSheetProps) {
+  const isDesktop = useIsDesktop();
+
   return (
     <AnimatePresence>
       {isOpen && (
         <motion.div 
-          initial={{ y: '100%' }}
-          animate={{ y: '0%' }}
-          exit={{ y: '100%' }}
+          // 1. Dynamic Animation: Slide from left on desktop, bottom on mobile
+          initial={isDesktop ? { x: '-100%', y: 0 } : { y: '100%', x: 0 }}
+          animate={{ x: 0, y: 0 }}
+          exit={isDesktop ? { x: '-100%', y: 0 } : { y: '100%', x: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-          drag="y"
+          
+          // 2. Disable drag gesture on desktop, enable 'y' drag on mobile
+          drag={isDesktop ? false : "y"}
           dragConstraints={{ top: 0 }}
           dragElastic={0.05}
           onDragEnd={(e, info) => {
-            // If dragged down far enough, close the sheet
-            if (info.offset.y > 100) {
+            if (!isDesktop && info.offset.y > 100) {
               onClose();
             }
           }}
-          className="absolute bottom-0 left-0 right-0 z-[60] bg-white rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.1)] h-[50dvh] flex flex-col"
+          
+          // 3. Responsive Tailwind Styling (Mobile default + md: overrides)
+          className="absolute z-[60] bg-white flex flex-col
+                     /* Mobile styles */
+                     bottom-0 left-0 right-0 rounded-t-3xl h-[50dvh] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]
+                     /* Desktop styles */
+                     md:top-0 md:bottom-0 md:right-auto md:w-[400px] md:h-[100dvh] md:rounded-none md:shadow-[4px_0_20px_rgba(0,0,0,0.1)]"
         >
-          {/* Drag Handle Area */}
-          <div className="w-full flex justify-center pt-4 pb-2 shrink-0 cursor-grab active:cursor-grabbing">
+          {/* Drag Handle Area (Hidden on desktop) */}
+          <div className="w-full flex justify-center pt-4 pb-2 shrink-0 cursor-grab active:cursor-grabbing md:hidden">
             <div className="w-12 h-1.5 bg-gray-300 rounded-full"></div>
           </div>
 
           {/* Scrollable Content inside the sheet */}
-          <div className="px-6 pb-8 pt-2 overflow-y-auto flex-1">
+          <div className="px-6 pb-8 pt-2 overflow-y-auto flex-1 md:pt-8">
             
             {/* View for when a STOP is selected */}
             {selectedStop && (

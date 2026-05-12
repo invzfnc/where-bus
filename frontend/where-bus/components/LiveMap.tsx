@@ -7,7 +7,6 @@ import { LocateFixed } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import { Stop, Route } from '@/app/page';
 
-// Updated coordinates to point to FSKTM, Universiti Malaya
 const FSKTM_POSITION: [number, number] = [3.1280, 101.6505];
 
 const MinimalGrayIcon = L.divIcon({
@@ -18,56 +17,86 @@ const MinimalGrayIcon = L.divIcon({
 });
 
 /**
- * Handles smooth camera animations and applies a mathematical offset
- * so the target coordinates appear in the top 25vh of the screen,
- * preventing the Bottom Sheet from covering the focal point.
+ * Handles smooth camera animations and applies dynamic bounding boxes 
+ * and offsets so the UI never covers the active target.
  */
-function MapUpdater({ center, zoom, isOffset }: { center: [number, number]; zoom: number; isOffset: boolean }) {
+function MapUpdater({ 
+  selectedStop, 
+  routeStops, 
+  userLocation 
+}: { 
+  selectedStop: Stop | null; 
+  routeStops: Stop[]; 
+  userLocation: [number, number];
+}) {
   const map = useMap();
   
   useEffect(() => {
-    let targetLatLng = L.latLng(center[0], center[1]);
+    // Safely check window size (important for Next.js SSR)
+    const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
 
-    if (isOffset) {
+    if (routeStops.length > 0) {
+      // --- 1. ROUTE SELECTED: Fit bounds around the whole route ---
+      const bounds = L.latLngBounds(routeStops.map(s => [s.latitude, s.longitude]));
+      
+      map.fitBounds(bounds, {
+        paddingTopLeft: isDesktop ? [420, 50] : [50, 50], 
+        paddingBottomRight: isDesktop ? [50, 50] : [50, (window?.innerHeight || 800) * 0.55], 
+        animate: true,
+        duration: 1.5
+      });
+
+    } else if (selectedStop) {
+      // --- 2. STOP SELECTED: Pan to single point with visual offset ---
+      const targetLatLng = L.latLng(selectedStop.latitude, selectedStop.longitude);
+      const zoom = 17;
       const targetPoint = map.project(targetLatLng, zoom);
-      const offsetPixels = window.innerHeight / 4;
-      targetPoint.y += offsetPixels;
-      targetLatLng = map.unproject(targetPoint, zoom);
-    }
+      
+      if (isDesktop) {
+        targetPoint.x -= 200; 
+      } else {
+        targetPoint.y += (window?.innerHeight || 800) * 0.25; 
+      }
+      
+      const offsetLatLng = map.unproject(targetPoint, zoom);
+      
+      // Distance check to prevent shivering
+      if (map.getCenter().distanceTo(offsetLatLng) > 50) {
+        map.flyTo(offsetLatLng, zoom, { duration: 1.5 });
+      } else {
+        map.setView(offsetLatLng, zoom);
+      }
 
-    // 1. Calculate how far the map needs to move
-    const currentCenter = map.getCenter();
-    const distance = currentCenter.distanceTo(targetLatLng);
-
-    // 2. Only animate if the distance is significant (> 50 meters)
-    if (distance > 50) {
-      map.flyTo(targetLatLng, zoom, { duration: 1.5 });
     } else {
-      // If it's already there, just snap the view instantly to prevent the 0-distance shiver
-      map.setView(targetLatLng, zoom);
+      // --- 3. DEFAULT: Pan to user location ---
+      const targetLatLng = L.latLng(userLocation[0], userLocation[1]);
+      
+      if (map.getCenter().distanceTo(targetLatLng) > 50) {
+        map.flyTo(targetLatLng, 15, { duration: 1.5 });
+      } else {
+        map.setView(targetLatLng, 15); // Instantly snap, no animation shivering!
+      }
     }
 
-    // 3. Force Leaflet to recalculate its container size to fix layout shifts
-    const timeout = setTimeout(() => {
-      map.invalidateSize();
-    }, 100);
-
+    // Force Leaflet to recalculate container size to fix layout shifts
+    const timeout = setTimeout(() => map.invalidateSize(), 100);
     return () => clearTimeout(timeout);
 
-  }, [center[0], center[1], zoom, isOffset, map]);
+  }, [selectedStop, routeStops, userLocation, map]);
 
   return null;
 }
 
 /**
- * Recenter button that uses a dynamic target position (user location or default).
+ * Recenter button that uses a dynamic target position.
  */
 function RecenterControl({ targetPosition }: { targetPosition: [number, number] }) {
   const map = useMap();
   return (
     <button 
       onClick={() => map.flyTo(targetPosition, 15)}
-      className="absolute bottom-[55vh] right-4 z-[400] bg-white p-3 rounded-full shadow-md text-gray-600 hover:text-black transition-all border border-gray-200"
+      // Updated CSS: Sits above the bottom sheet on mobile, but moves to standard bottom-right on desktop
+      className="absolute bottom-[55vh] md:bottom-8 right-4 md:right-8 z-[400] bg-white p-3 rounded-full shadow-md text-gray-600 hover:text-black transition-all border border-gray-200"
     >
       <LocateFixed size={24} />
     </button>
@@ -81,7 +110,6 @@ interface LiveMapProps {
 
 export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
   const [routeStops, setRouteStops] = useState<Stop[]>([]);
-  // Use FSKTM as the initial default state
   const [userLocation, setUserLocation] = useState<[number, number]>(FSKTM_POSITION);
   const [hasUserLocation, setHasUserLocation] = useState(false);
 
@@ -94,7 +122,7 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
           setHasUserLocation(true);
         },
         (error) => {
-          console.warn("Geolocation permission denied or failed. Using default location.", error.message);
+          console.warn("Geolocation permission denied or failed.", error.message);
         },
         { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
       );
@@ -115,27 +143,13 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
     }
   }, [selectedRoute]);
 
-  let currentCenter = userLocation;
-  let currentZoom = 15;
-  let applyOffset = false;
-
-  if (selectedStop) {
-    currentCenter = [selectedStop.latitude, selectedStop.longitude];
-    currentZoom = 17; 
-    applyOffset = true;
-  } else if (routeStops.length > 0) {
-    currentCenter = [routeStops[0].latitude, routeStops[0].longitude];
-    currentZoom = 14; 
-    applyOffset = true;
-  }
-
   const polylineCoords: [number, number][] = routeStops.map(stop => [stop.latitude, stop.longitude]);
 
   return (
     <div className="relative w-full h-full bg-gray-100">
       <MapContainer 
-        center={currentCenter} 
-        zoom={currentZoom} 
+        center={userLocation} 
+        zoom={15} 
         style={{ height: '100%', width: '100%', zIndex: 0 }}
         zoomControl={false} 
       >
@@ -144,7 +158,12 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
           attribution='&copy; OSM & CARTO'
         />
         
-        <MapUpdater center={currentCenter} zoom={currentZoom} isOffset={applyOffset} />
+        {/* We moved all the camera logic into MapUpdater, passing the raw state */}
+        <MapUpdater 
+          selectedStop={selectedStop} 
+          routeStops={routeStops} 
+          userLocation={userLocation} 
+        />
         
         {polylineCoords.length > 0 && (
           <Polyline 
@@ -173,7 +192,6 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
           </Marker>
         )}
 
-        {/* Always draw a distinctive grey dot if the user's live location is known */}
         {hasUserLocation && (
           <CircleMarker 
             center={userLocation} 
@@ -184,14 +202,12 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
           </CircleMarker>
         )}
 
-        {/* Only show the default FSKTM fallback if we don't have user location and nothing is searched */}
         {!selectedStop && !selectedRoute && !hasUserLocation && (
           <Marker position={FSKTM_POSITION} icon={MinimalGrayIcon}>
             <Popup>FSKTM, Universiti Malaya (Default)</Popup>
           </Marker>
         )}
 
-        {/* Pass the dynamic target position to the recenter button */}
         <RecenterControl targetPosition={userLocation} />
       </MapContainer>
     </div>
