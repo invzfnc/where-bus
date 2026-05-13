@@ -90,12 +90,36 @@ function MapUpdater({
 /**
  * Recenter button that uses a dynamic target position.
  */
+/**
+ * Recenter button that uses a dynamic target position and accounts for UI overlays.
+ */
 function RecenterControl({ targetPosition }: { targetPosition: [number, number] }) {
   const map = useMap();
+  
+  const handleRecenter = () => {
+    const zoom = 15;
+    const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
+    const targetLatLng = L.latLng(targetPosition[0], targetPosition[1]);
+    
+    // Project to pixel coordinates to apply offset
+    const targetPoint = map.project(targetLatLng, zoom);
+    
+    if (isDesktop) {
+      // Offset for the left sidebar on desktop
+      targetPoint.x -= 200; 
+    } else {
+      // Offset for the bottom sheet on mobile
+      targetPoint.y += (window?.innerHeight || 800) * 0.25; 
+    }
+    
+    // Unproject back to LatLng and fly there
+    const offsetLatLng = map.unproject(targetPoint, zoom);
+    map.flyTo(offsetLatLng, zoom, { duration: 1.0 });
+  };
+
   return (
     <button 
-      onClick={() => map.flyTo(targetPosition, 15)}
-      // Updated CSS: Sits above the bottom sheet on mobile, but moves to standard bottom-right on desktop
+      onClick={handleRecenter}
       className="absolute bottom-[55vh] md:bottom-8 right-4 md:right-8 z-[400] bg-white p-3 rounded-full shadow-md text-gray-600 hover:text-black transition-all border border-gray-200"
     >
       <LocateFixed size={24} />
