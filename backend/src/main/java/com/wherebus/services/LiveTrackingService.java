@@ -12,40 +12,51 @@ import java.net.URI;
 import java.net.URL;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Polls Prasarana's GTFS-Realtime feeds every 15 seconds and maintains
- * a merged, thread-safe snapshot of all active vehicle positions.
+ * Polls Prasarana's GTFS-Realtime feeds and maintains a merged, thread-safe
+ * snapshot of all active vehicle positions.
  *
- * <p>Speed derivation: Prasarana's {@code speed} field is broadcast in km/h despite the
- * GTFS-RT spec mandating m/s. The field is converted on read. Additionally, derived speed
- * is computed from consecutive position deltas using the {@code timestamp} field, which is
- * more reliable than the broadcast value and reflects actual recent movement.
+ * <p><b>Polling strategy:</b> The two feeds are fetched sequentially with a short delay
+ * between them to avoid hitting the data.gov.my rate limiter with back-to-back requests
+ * in the same scheduler tick. Each feed tracks its own consecutive failure count;
+ * on a 429 the feed is skipped for {@code BACKOFF_CYCLES} cycles before retrying.
  *
- * <p>Stale eviction: vehicles not seen in the last {@code STALE_THRESHOLD_MS} are removed
- * from the active map to prevent ghost buses from appearing in ETA results after a route ends.
+ * <p><b>Speed derivation:</b> Prasarana's {@code speed} field is broadcast in km/h despite
+ * the GTFS-RT spec mandating m/s. The field is converted on read (÷ 3.6). Derived speed
+ * from consecutive position deltas is preferred and more reliable.
+ *
+ * <p><b>Stale eviction:</b> Vehicles not updated within {@code STALE_THRESHOLD_MS} are
+ * removed to prevent ghost buses from appearing in ETA results after a route ends.
  */
 @Service
 public class LiveTrackingService {
 
-    // ConcurrentHashMap so the @Scheduled writer and HTTP request readers never block each other.
-    // Key: vehicleId, Value: latest VehiclePosition from the Protobuf feed.
+    // Key: vehicleId, Value: latest VehiclePosition.
     private final Map<String, VehiclePosition> activeVehicles = new ConcurrentHashMap<>();
 
-    // Tracks the last known [lat, lon, timestamp] per vehicle for derived speed computation.
+    // Last known [lat, lon, timestamp] per vehicle for derived speed computation.
     private final Map<String, double[]> previousPositions = new ConcurrentHashMap<>();
 
-    // Derived speed in m/s computed from consecutive position deltas.
-    // Preferred over the feed's speed field, which Prasarana broadcasts in km/h (non-standard).
+    // Derived speed in m/s from consecutive position deltas.
     private final Map<String, Double> derivedSpeeds = new ConcurrentHashMap<>();
 
-    // Vehicles not updated within this window are considered off-route and evicted.
-    private static final long STALE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
+    // Per-feed consecutive 429 count. Indexed parallel to LIVE_FEED_URLS.
+    private final AtomicInteger[] feedBackoffCycles = {new AtomicInteger(0), new AtomicInteger(0)};
 
-    // Minimum plausible derived speed to store. Below this the bus is considered stationary.
+    // How many 15-second cycles to skip a feed after a 429 before retrying.
+    // 4 cycles = 60 seconds backoff on rate-limit.
+    private static final int BACKOFF_CYCLES = 4;
+
+    // Delay between fetching the two feeds in the same scheduler tick (ms).
+    // Spreads load and reduces the chance of consecutive requests hitting the rate limiter.
+    private static final long INTER_FEED_DELAY_MS = 3000;
+
+    private static final long STALE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
     private static final double MIN_DERIVED_SPEED_MPS = 0.5;
 
-    // Fallback speed (~11 km/h) when neither derived nor broadcast speed is usable.
+    // Fallback ~11 km/h. Package-private so EtaCalculationService can reference it.
     static final double DEFAULT_SPEED_MPS = 3.0;
 
     private static final String[] LIVE_FEED_URLS = {
@@ -53,59 +64,90 @@ public class LiveTrackingService {
             "https://api.data.gov.my/gtfs-realtime/vehicle-position/prasarana?category=rapid-bus-mrtfeeder"
     };
 
-    /** Fetches and merges both Prasarana feeds into the active vehicle map. Runs every 15 seconds. */
+    /**
+     * Fetches both Prasarana feeds sequentially every 15 seconds.
+     * Feeds that returned a 429 on the previous cycle are skipped and retried after
+     * {@code BACKOFF_CYCLES} cycles (60 seconds at the default rate).
+     */
     @Scheduled(fixedRate = 15000)
     public void refreshVehiclePositions() {
-        System.out.println("⏳ Polling GTFS-RT feeds...");
-        int count = 0;
+        int totalIngested = 0;
         long now = System.currentTimeMillis();
 
-        for (String feedUrl : LIVE_FEED_URLS) {
-            try {
-                URL url = new URI(feedUrl).toURL();
-                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-                connection.setRequestMethod("GET");
-                connection.setRequestProperty("User-Agent", "WhereBus/2.0");
-                connection.setConnectTimeout(5000);
-                connection.setReadTimeout(5000);
-
-                if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
-                    try (InputStream inputStream = connection.getInputStream()) {
-                        FeedMessage feed = FeedMessage.parseFrom(inputStream);
-                        for (FeedEntity entity : feed.getEntityList()) {
-                            if (!entity.hasVehicle()) continue;
-
-                            VehiclePosition vehicle = entity.getVehicle();
-                            String vehicleId = vehicle.getVehicle().getId();
-
-                            updateDerivedSpeed(vehicleId, vehicle);
-
-                            activeVehicles.put(vehicleId, vehicle);
-                            count++;
-                        }
-                    }
-                } else {
-                    System.err.println("⚠️ Feed returned " + connection.getResponseCode() + ": " + feedUrl);
-                }
-
-                connection.disconnect();
-
-            } catch (Exception e) {
-                System.err.println("❌ Failed to fetch feed [" + feedUrl + "]: " + e.getMessage());
+        for (int i = 0; i < LIVE_FEED_URLS.length; i++) {
+            // Skip this feed if it is in a backoff window.
+            if (feedBackoffCycles[i].get() > 0) {
+                int remaining = feedBackoffCycles[i].decrementAndGet();
+                System.out.println("⏭️  Skipping feed (backoff, " + remaining + " cycles left): " + LIVE_FEED_URLS[i]);
+                continue;
             }
+
+            // Stagger requests to avoid back-to-back hits on the rate limiter.
+            if (i > 0) {
+                try { Thread.sleep(INTER_FEED_DELAY_MS); } catch (InterruptedException ignored) {}
+            }
+
+            int ingested = fetchFeed(LIVE_FEED_URLS[i], feedBackoffCycles[i]);
+            totalIngested += ingested;
         }
 
         evictStaleVehicles(now);
-        System.out.println("✅ Fleet updated: " + count + " vehicles ingested, " + activeVehicles.size() + " active.");
+        System.out.println("✅ Fleet updated: " + totalIngested + " ingested, "
+                + activeVehicles.size() + " active.");
+    }
+
+    /**
+     * Fetches and parses a single GTFS-RT feed URL.
+     *
+     * @param feedUrl      The endpoint to fetch.
+     * @param backoffCount The feed's backoff counter — set to BACKOFF_CYCLES on 429.
+     * @return Number of vehicle positions ingested from this feed.
+     */
+    private int fetchFeed(String feedUrl, AtomicInteger backoffCount) {
+        int count = 0;
+        try {
+            URL url = new URI(feedUrl).toURL();
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("User-Agent", "WhereBus/2.0");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(8000);
+
+            int responseCode = connection.getResponseCode();
+
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                try (InputStream inputStream = connection.getInputStream()) {
+                    FeedMessage feed = FeedMessage.parseFrom(inputStream);
+                    for (FeedEntity entity : feed.getEntityList()) {
+                        if (!entity.hasVehicle()) continue;
+                        VehiclePosition vehicle = entity.getVehicle();
+                        String vehicleId = vehicle.getVehicle().getId();
+                        updateDerivedSpeed(vehicleId, vehicle);
+                        activeVehicles.put(vehicleId, vehicle);
+                        count++;
+                    }
+                }
+            } else if (responseCode == 429) {
+                backoffCount.set(BACKOFF_CYCLES);
+                System.err.println("⚠️  429 rate-limited on: " + feedUrl
+                        + " — backing off for " + BACKOFF_CYCLES + " cycles ("
+                        + (BACKOFF_CYCLES * 15) + "s).");
+            } else {
+                System.err.println("⚠️  Feed returned " + responseCode + ": " + feedUrl);
+            }
+
+            connection.disconnect();
+
+        } catch (Exception e) {
+            System.err.println("❌ Failed to fetch [" + feedUrl + "]: " + e.getMessage());
+        }
+        return count;
     }
 
     /**
      * Computes derived speed from the delta between the previous and current position.
-     * Stores the result in {@code derivedSpeeds} and updates {@code previousPositions}.
-     *
-     * <p>Only stored if the time delta is positive and the resulting speed is above
-     * {@code MIN_DERIVED_SPEED_MPS} — zero or near-zero indicates a stationary bus,
-     * which should fall through to the fallback rather than produce a near-infinite ETA.
+     * Only stored if the resulting speed is above {@code MIN_DERIVED_SPEED_MPS} — below
+     * this the bus is considered stationary and the fallback should be used instead.
      */
     private void updateDerivedSpeed(String vehicleId, VehiclePosition vehicle) {
         if (!vehicle.hasTimestamp()) return;
@@ -116,20 +158,14 @@ public class LiveTrackingService {
 
         double[] prev = previousPositions.get(vehicleId);
         if (prev != null) {
-            double prevLat = prev[0];
-            double prevLon = prev[1];
-            long prevTimestamp = (long) prev[2];
-
-            long deltaSeconds = currTimestamp - prevTimestamp;
+            long deltaSeconds = currTimestamp - (long) prev[2];
             if (deltaSeconds > 0) {
-                double distanceMeters = haversineDistance(prevLat, prevLon, currLat, currLon);
+                double distanceMeters = haversineDistance(prev[0], prev[1], currLat, currLon);
                 double speedMps = distanceMeters / deltaSeconds;
 
                 if (speedMps >= MIN_DERIVED_SPEED_MPS) {
                     derivedSpeeds.put(vehicleId, speedMps);
                 } else {
-                    // Bus is stationary or barely moving — remove stale derived speed so
-                    // the fallback is used rather than a derived value from minutes ago.
                     derivedSpeeds.remove(vehicleId);
                 }
             }
@@ -138,13 +174,9 @@ public class LiveTrackingService {
         previousPositions.put(vehicleId, new double[]{currLat, currLon, currTimestamp});
     }
 
-    /**
-     * Removes vehicles whose last update timestamp is older than {@code STALE_THRESHOLD_MS}.
-     * Prevents buses that have finished their route from persisting in ETA results.
-     */
+    /** Removes vehicles whose last timestamp is older than STALE_THRESHOLD_MS. */
     private void evictStaleVehicles(long now) {
         long staleBeforeMs = now - STALE_THRESHOLD_MS;
-
         activeVehicles.entrySet().removeIf(entry -> {
             VehiclePosition v = entry.getValue();
             if (!v.hasTimestamp()) return false;
@@ -162,9 +194,8 @@ public class LiveTrackingService {
      *
      * <p>Priority:
      * <ol>
-     *   <li>Derived speed from consecutive position deltas (most reliable).</li>
-     *   <li>Feed {@code speed} field divided by 3.6 — Prasarana broadcasts km/h
-     *       despite the GTFS-RT spec mandating m/s.</li>
+     *   <li>Derived speed from consecutive position deltas.</li>
+     *   <li>Feed {@code speed} field ÷ 3.6 — Prasarana broadcasts km/h despite the spec.</li>
      *   <li>{@code DEFAULT_SPEED_MPS} fallback (~11 km/h).</li>
      * </ol>
      */
@@ -174,7 +205,6 @@ public class LiveTrackingService {
 
         if (vehicle.getPosition().hasSpeed()) {
             double feedSpeedKmh = vehicle.getPosition().getSpeed();
-            // Prasarana broadcasts km/h in the speed field. Convert to m/s.
             if (feedSpeedKmh > 1.0 && feedSpeedKmh < 120.0) {
                 return feedSpeedKmh / 3.6;
             }
@@ -184,11 +214,12 @@ public class LiveTrackingService {
     }
 
     /**
-     * Returns all vehicles currently on the given route, with GPS coordinates and direction.
+     * Returns all vehicles currently on the given route with GPS coordinates and direction.
      *
-     * <p>Prasarana broadcasts route IDs with a trailing "0" (e.g. "T7890" for route "T789").
-     * Both the canonical ID and the suffixed variant are matched here so callers never need
-     * to handle that quirk themselves.
+     * <p>Prasarana broadcasts route IDs that match the static route_id in routes.txt exactly
+     * for most routes. The trailing-"0" variant is also checked to handle edge cases where
+     * the broadcast ID has an extra suffix (e.g. frontend sends "T789", feed broadcasts "T7890").
+     * Note: if the static route_id is already "T7890", pass "T7890" — not "T789".
      */
     public List<Map<String, Object>> getVehiclesByRoute(String routeId) {
         List<Map<String, Object>> vehicles = new ArrayList<>();
@@ -198,9 +229,7 @@ public class LiveTrackingService {
             if (!v.hasTrip()) continue;
 
             String broadcastedId = v.getTrip().getRouteId();
-            boolean matchesRoute = routeId.equalsIgnoreCase(broadcastedId)
-                    || (routeId + "0").equalsIgnoreCase(broadcastedId);
-            if (!matchesRoute) continue;
+            if (!matchesRouteId(routeId, broadcastedId)) continue;
 
             int directionId = v.getTrip().hasDirectionId() ? v.getTrip().getDirectionId() : 0;
 
@@ -221,9 +250,28 @@ public class LiveTrackingService {
     }
 
     /**
-     * Returns a debug snapshot of the current fleet state.
-     * Used by GET /debug-fleet to verify Prasarana's live broadcast structure.
+     * Checks whether a queried route ID matches a broadcasted route ID.
+     *
+     * <p>Handles two known Prasarana ID quirks:
+     * <ul>
+     *   <li>Case-insensitive match (some IDs differ in casing between feeds).</li>
+     *   <li>Trailing-"0" suffix: if the queried ID has a "0" appended relative to the
+     *       broadcast (e.g. query "T7890" vs broadcast "T789"), or vice versa.</li>
+     *   <li>Space-and-direction suffixes like "T155 Outbound" — matched by checking if
+     *       the broadcast ID starts with the queried ID.</li>
+     * </ul>
      */
+    private boolean matchesRouteId(String queryId, String broadcastedId) {
+        if (queryId.equalsIgnoreCase(broadcastedId)) return true;
+        if ((queryId + "0").equalsIgnoreCase(broadcastedId)) return true;
+        if (queryId.endsWith("0") && queryId.substring(0, queryId.length() - 1)
+                .equalsIgnoreCase(broadcastedId)) return true;
+        // Handle "T155 Outbound" style suffixes.
+        if (broadcastedId.toLowerCase().startsWith(queryId.toLowerCase() + " ")) return true;
+        return false;
+    }
+
+    /** Returns a debug snapshot of the current fleet state. */
     public Map<String, Object> getFleetSnapshot() {
         Set<String> activeRouteIds = new HashSet<>();
         List<Map<String, Object>> samples = new ArrayList<>();
@@ -251,7 +299,6 @@ public class LiveTrackingService {
         return snapshot;
     }
 
-    /** Haversine distance in meters between two GPS coordinates. */
     private double haversineDistance(double lat1, double lon1, double lat2, double lon2) {
         final int R = 6371000;
         double dLat = Math.toRadians(lat2 - lat1);
