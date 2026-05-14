@@ -18,10 +18,15 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Polls Prasarana's GTFS-Realtime feeds every 30 seconds and maintains a merged,
  * thread-safe snapshot of all active vehicle positions.
  *
- * <p><b>Polling strategy:</b> The two feeds are fetched sequentially with a short delay
- * between them to avoid hitting the data.gov.my rate limiter with back-to-back requests.
- * Each feed tracks its own consecutive failure count; on a 429 the feed is skipped for
- * {@code BACKOFF_CYCLES} cycles before retrying.
+ * <p><b>Polling strategy:</b> The two feeds are fetched sequentially with
+ * {@code INTER_FEED_DELAY_MS} (10 seconds) between them to reduce back-to-back
+ * rate limit hits on data.gov.my. Each feed tracks its own consecutive failure count;
+ * on a 429 the feed is skipped for {@code BACKOFF_CYCLES} (4) cycles = 2 minutes.
+ *
+ * <p><b>Blackout-safe eviction:</b> Stale vehicle eviction only runs when at least one
+ * feed was attempted in the current cycle. During a full rate-limit blackout (both feeds
+ * in backoff), the last known positions are preserved so ETA and vehicle endpoints
+ * continue returning results rather than an empty fleet.
  *
  * <p><b>Speed derivation:</b> Prasarana's {@code speed} field is broadcast in km/h despite
  * the GTFS-RT spec mandating m/s. The field is converted on read (÷ 3.6). Derived speed
@@ -33,8 +38,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *       indicate a GPS position jump rather than genuine movement.</li>
  * </ul>
  *
- * <p><b>Stale eviction:</b> Vehicles not updated within {@code STALE_THRESHOLD_MS} are
- * removed to prevent ghost buses from appearing in ETA results after a route ends.
+ * <p><b>Stale eviction:</b> Vehicles not updated within {@code STALE_THRESHOLD_MS}
+ * (10 minutes) are removed when a healthy feed cycle runs.
  */
 @Service
 public class LiveTrackingService {
@@ -45,9 +50,16 @@ public class LiveTrackingService {
 
     private final AtomicInteger[] feedBackoffCycles = {new AtomicInteger(0), new AtomicInteger(0)};
 
-    private static final int BACKOFF_CYCLES = 2;
-    private static final long INTER_FEED_DELAY_MS = 3000;
-    private static final long STALE_THRESHOLD_MS = 5 * 60 * 1000;
+    // How many 30s cycles to skip after a 429. 4 cycles = 2 minutes backoff.
+    private static final int BACKOFF_CYCLES = 4;
+
+    // Spread the two feed requests apart to reduce back-to-back rate limit hits.
+    private static final long INTER_FEED_DELAY_MS = 10000;
+
+    // Vehicles are only evicted if they haven't been seen for this long AND at least
+    // one feed is currently healthy. This prevents a full fleet wipe during a rate-limit
+    // blackout where no new data arrives but the buses haven't actually stopped running.
+    private static final long STALE_THRESHOLD_MS = 10 * 60 * 1000;
 
     // Displacements below this are treated as GPS jitter, not real movement.
     private static final double MIN_MOVEMENT_METERS = 20.0;
@@ -71,6 +83,7 @@ public class LiveTrackingService {
     public void refreshVehiclePositions() {
         int totalIngested = 0;
         long now = System.currentTimeMillis();
+        boolean anyFeedAttempted = false;
 
         for (int i = 0; i < LIVE_FEED_URLS.length; i++) {
             if (feedBackoffCycles[i].get() > 0) {
@@ -81,10 +94,17 @@ public class LiveTrackingService {
             if (i > 0) {
                 try { Thread.sleep(INTER_FEED_DELAY_MS); } catch (InterruptedException ignored) {}
             }
+            anyFeedAttempted = true;
             totalIngested += fetchFeed(LIVE_FEED_URLS[i], feedBackoffCycles[i]);
         }
 
-        evictStaleVehicles(now);
+        // Only evict stale vehicles when at least one feed was attempted successfully.
+        // During a full rate-limit blackout (all feeds in backoff), preserving the last
+        // known positions is better than wiping the fleet and returning empty results.
+        if (anyFeedAttempted) {
+            evictStaleVehicles(now);
+        }
+
         System.out.println("✅ Fleet updated: " + totalIngested + " ingested, "
                 + activeVehicles.size() + " active.");
     }
@@ -95,7 +115,7 @@ public class LiveTrackingService {
             URL url = new URI(feedUrl).toURL();
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("GET");
-            connection.setRequestProperty("User-Agent", "WhereBus/2.0");
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (compatible; WhereBus/2.0)");
             connection.setConnectTimeout(5000);
             connection.setReadTimeout(8000);
 
@@ -113,10 +133,22 @@ public class LiveTrackingService {
                     }
                 }
             } else if (responseCode == 429) {
-                backoffCount.set(BACKOFF_CYCLES);
+                // Respect Retry-After if the server provides it (value is in seconds).
+                // Convert to cycles (round up) so we wait at least as long as requested.
+                // Fall back to BACKOFF_CYCLES if the header is absent or unparseable.
+                int cycles = BACKOFF_CYCLES;
+                String retryAfter = connection.getHeaderField("Retry-After");
+                if (retryAfter != null) {
+                    try {
+                        int retrySeconds = Integer.parseInt(retryAfter.trim());
+                        cycles = (int) Math.ceil((double) retrySeconds / 30);
+                    } catch (NumberFormatException ignored) {}
+                }
+                backoffCount.set(cycles);
                 System.err.println("⚠️  429 rate-limited: " + feedUrl
-                        + " — backing off for " + BACKOFF_CYCLES + " cycles ("
-                        + (BACKOFF_CYCLES * 30) + "s).");
+                        + " — backing off for " + cycles + " cycles ("
+                        + (cycles * 30) + "s)."
+                        + (retryAfter != null ? " Retry-After: " + retryAfter + "s." : ""));
             } else {
                 System.err.println("⚠️  Feed returned " + responseCode + ": " + feedUrl);
             }
