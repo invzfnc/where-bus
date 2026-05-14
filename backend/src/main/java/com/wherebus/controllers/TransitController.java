@@ -150,7 +150,32 @@ public class TransitController {
     }
 
     /**
-     * Returns all live vehicles currently on the given route with GPS coordinates and direction.
+     * Returns all routes that serve the given stop, with direction availability flags.
+     * GET /api/transit/stops/{stopId}/routes
+     *
+     * <p>Each result includes:
+     * <ul>
+     *   <li>{@code shortName} — use this as the {@code routeId} for /vehicles and /eta.</li>
+     *   <li>{@code servesOutbound} / {@code servesInbound} — whether the route serves
+     *       this stop in each direction. Use these to filter routes relevant to the
+     *       user's direction of travel when they select a source and destination stop.</li>
+     * </ul>
+     */
+    @Operation(
+            summary = "Get routes serving a stop",
+            description = "Returns all routes that stop at the given stop ID, with direction flags. "
+                    + "Use the returned 'shortName' field as the routeId for /vehicles and /eta. "
+                    + "Use 'servesOutbound' and 'servesInbound' to filter by the user's direction of travel. "
+                    + "Use /search to find stop IDs by name.")
+    @ApiResponse(responseCode = "200", content = @Content(mediaType = "application/json"))
+    @GetMapping("/stops/{stopId}/routes")
+    public List<Map<String, Object>> getRoutesForStop(
+            @Parameter(description = "stop_id from stops.txt.", example = "12000802")
+            @PathVariable String stopId) {
+        return transitService.getRoutesForStop(stopId);
+    }
+
+    /**
      * GET /api/transit/vehicles?routeId=T815
      *
      * <p>Response fields per vehicle:

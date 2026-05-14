@@ -41,6 +41,9 @@ import com.opencsv.CSVReader;
  *   <li>{@code shapePolylines} — Populated during startup only; cleared afterwards to
  *       free memory. Not accessed at request time.</li>
  *   <li>{@code stopGraph} — Adjacency list for future pathfinding use.</li>
+ *   <li>{@code stopToRouteDirections} — Inverted index: stop_id → route-direction pairs
+ *       that serve it. Built once after all feeds load in O(R × S) time. Enables
+ *       O(1) lookup for GET /stops/{stopId}/routes without scanning all route paths.</li>
  * </ul>
  *
  * <p><b>Multi-feed schema differences:</b> rapid-bus-kl and rapid-bus-mrtfeeder use
@@ -74,6 +77,11 @@ public class TransitService {
     private final Map<String, String> routeDirectionToShapeId = new HashMap<>();
     private final Map<String, List<String>> stopGraph = new HashMap<>();
 
+    // Inverted index: stop_id → list of RouteAtStop entries (internalRouteId + directionId).
+    // Built once after all feeds are loaded. Enables O(1) lookup of all routes
+    // serving a given stop without scanning every route path per request.
+    private final Map<String, List<RouteAtStop>> stopToRouteDirections = new HashMap<>();
+
     private static final String[] FEED_DIRECTORIES = {
             "data/rapid-bus-kl",
             "data/rapid-bus-mrtfeeder"
@@ -97,6 +105,7 @@ public class TransitService {
         }
 
         shapePolylines.clear();
+        buildStopIndex();
 
         System.out.println("✅ Stops loaded:            " + stopDirectory.size());
         System.out.println("✅ Routes loaded:           " + routeDirectory.size());
@@ -104,6 +113,7 @@ public class TransitService {
         System.out.println("✅ Route paths loaded:      " + routePaths.size());
         System.out.println("✅ Stop distances computed: " + stopCumulativeDistances.size());
         System.out.println("✅ Graph vertices:          " + stopGraph.size());
+        System.out.println("✅ Stop route index:        " + stopToRouteDirections.size() + " stops indexed");
     }
 
     // -------------------------------------------------------------------------
@@ -489,5 +499,99 @@ public class TransitService {
 
     public List<String> getAdjacentStops(String stopId) {
         return stopGraph.getOrDefault(stopId, Collections.emptyList());
+    }
+
+    // -------------------------------------------------------------------------
+    // Stop → route inverted index
+    // -------------------------------------------------------------------------
+
+    /**
+     * Builds the inverted index from stop ID to the route-direction pairs that serve it.
+     *
+     * <p>Iterates over every entry in {@code routePaths} (one per route-direction) and
+     * registers each stop in that path against the route. Called once after all feeds
+     * are loaded and {@code routePaths} is fully populated.
+     *
+     * <p>Time complexity: O(R × S) at startup, where R = total route-direction pairs
+     * and S = average stops per route-direction. O(1) per request after that.
+     */
+    private void buildStopIndex() {
+        for (Map.Entry<String, LinkedList<String>> entry : routePaths.entrySet()) {
+            String pathKey = entry.getKey(); // "routeId_directionId"
+            int separatorIdx = pathKey.lastIndexOf('_');
+            if (separatorIdx == -1) continue;
+
+            String routeId = pathKey.substring(0, separatorIdx);
+            int directionId;
+            try {
+                directionId = Integer.parseInt(pathKey.substring(separatorIdx + 1));
+            } catch (NumberFormatException e) {
+                continue;
+            }
+
+            for (String stopId : entry.getValue()) {
+                stopToRouteDirections
+                        .computeIfAbsent(stopId, k -> new ArrayList<>())
+                        .add(new RouteAtStop(routeId, directionId));
+            }
+        }
+    }
+
+    /**
+     * Returns all routes that serve the given stop, including which direction(s) each
+     * route serves it in.
+     *
+     * <p>Multiple entries for the same route with different {@code directionId} values
+     * are merged into a single result so the frontend sees one entry per route with
+     * {@code servesOutbound} and {@code servesInbound} flags.
+     *
+     * <p>Time complexity: O(1) index lookup + O(k) merge, where k = number of
+     * route-direction pairs serving this stop (typically 2–10).
+     *
+     * @param stopId stop_id from stops.txt (e.g. "12000802").
+     * @return List of route payloads, each containing shortName, longName, headsigns,
+     *         and direction availability flags. Empty if the stop is unknown or unserved.
+     */
+    public List<Map<String, Object>> getRoutesForStop(String stopId) {
+        List<RouteAtStop> entries = stopToRouteDirections.get(stopId);
+        if (entries == null || entries.isEmpty()) return Collections.emptyList();
+
+        // Merge direction flags per route: routeId → {servesOutbound, servesInbound}
+        Map<String, boolean[]> routeDirectionFlags = new LinkedHashMap<>();
+        for (RouteAtStop entry : entries) {
+            boolean[] flags = routeDirectionFlags.computeIfAbsent(
+                    entry.routeId, k -> new boolean[]{false, false});
+            if (entry.directionId == 0) flags[0] = true;
+            else if (entry.directionId == 1) flags[1] = true;
+        }
+
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (Map.Entry<String, boolean[]> entry : routeDirectionFlags.entrySet()) {
+            Route route = routeDirectory.get(entry.getKey());
+            if (route == null) continue;
+
+            boolean[] flags = entry.getValue();
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("shortName", route.getName());
+            payload.put("longName", route.getLongName());
+            payload.put("headsignOutbound", route.getHeadsignOutbound());
+            payload.put("headsignInbound", route.getHeadsignInbound());
+            payload.put("servesOutbound", flags[0]);
+            payload.put("servesInbound", flags[1]);
+            results.add(payload);
+        }
+
+        return results;
+    }
+
+    /** Index entry representing a single route-direction pair serving a stop. */
+    private static class RouteAtStop {
+        final String routeId;
+        final int directionId;
+
+        RouteAtStop(String routeId, int directionId) {
+            this.routeId = routeId;
+            this.directionId = directionId;
+        }
     }
 }
