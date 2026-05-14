@@ -69,14 +69,25 @@ export default function Home() {
     setUiState('STANDBY');
   };
 
+  // Full home reset: clears selection, search, and panel — called by the recenter button.
+  const resetToHome = () => {
+    setSelectedStop(null);
+    setSelectedRoute(null);
+    setSearchQuery('');
+    setStopResults([]);
+    setRouteResults([]);
+    setUiState('STANDBY');
+  };
+
   return (
     <main className="relative h-[100dvh] w-screen overflow-hidden bg-gray-50 font-sans">
       
       {/* Background Map */}
       <div className="absolute inset-0 z-0">
-        <LiveMap 
-          selectedRoute={selectedRoute} 
-          selectedStop={selectedStop} 
+        <LiveMap
+          selectedRoute={selectedRoute}
+          selectedStop={selectedStop}
+          onResetToHome={resetToHome}
         />
       </div>
 

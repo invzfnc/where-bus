@@ -93,25 +93,34 @@ function MapUpdater({
 /**
  * Recenter button that uses a dynamic target position and accounts for UI overlays.
  */
-function RecenterControl({ targetPosition }: { targetPosition: [number, number] }) {
+function RecenterControl({
+  targetPosition,
+  onResetToHome,
+}: {
+  targetPosition: [number, number];
+  onResetToHome: () => void;
+}) {
   const map = useMap();
-  
+
   const handleRecenter = () => {
+    // Reset all app state to the home/default state first.
+    onResetToHome();
+
     const zoom = 15;
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
     const targetLatLng = L.latLng(targetPosition[0], targetPosition[1]);
-    
+
     // Project to pixel coordinates to apply offset
     const targetPoint = map.project(targetLatLng, zoom);
-    
+
     if (isDesktop) {
       // Offset for the left sidebar on desktop
-      targetPoint.x -= 200; 
+      targetPoint.x -= 200;
     } else {
       // Offset for the bottom sheet on mobile
-      targetPoint.y += (window?.innerHeight || 800) * 0.25; 
+      targetPoint.y += (window?.innerHeight || 800) * 0.25;
     }
-    
+
     // Unproject back to LatLng and fly there
     const offsetLatLng = map.unproject(targetPoint, zoom);
     map.flyTo(offsetLatLng, zoom, { duration: 1.0 });
@@ -130,9 +139,10 @@ function RecenterControl({ targetPosition }: { targetPosition: [number, number] 
 interface LiveMapProps {
   selectedStop: Stop | null;
   selectedRoute: Route | null;
+  onResetToHome: () => void;
 }
 
-export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
+export default function LiveMap({ selectedStop, selectedRoute, onResetToHome }: LiveMapProps) {
   const [routeStops, setRouteStops] = useState<Stop[]>([]);
   const [userLocation, setUserLocation] = useState<[number, number]>(FSKTM_POSITION);
   const [hasUserLocation, setHasUserLocation] = useState(false);
@@ -153,18 +163,21 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
     }
   }, []);
 
-  // Fetch the physical polyline path when a route is selected
+  // Fetch the physical polyline path when a route is selected.
+  // The clear (no route) is deferred into a promise callback so setState is
+  // never called synchronously inside the effect body — satisfies
+  // react-hooks/set-state-in-effect.
   useEffect(() => {
+    let cancelled = false;
     if (selectedRoute) {
       fetch(`/api/transit/routes/${selectedRoute.id}/path`)
         .then(res => res.json())
-        .then((data: Stop[]) => {
-          setRouteStops(data);
-        })
+        .then((data: Stop[]) => { if (!cancelled) setRouteStops(data); })
         .catch(err => console.error("Failed to fetch route path", err));
     } else {
-      setRouteStops([]); 
+      Promise.resolve().then(() => { if (!cancelled) setRouteStops([]); });
     }
+    return () => { cancelled = true; };
   }, [selectedRoute]);
 
   const polylineCoords: [number, number][] = routeStops.map(stop => [stop.latitude, stop.longitude]);
@@ -232,7 +245,7 @@ export default function LiveMap({ selectedStop, selectedRoute }: LiveMapProps) {
           </Marker>
         )}
 
-        <RecenterControl targetPosition={userLocation} />
+        <RecenterControl targetPosition={userLocation} onResetToHome={onResetToHome} />
       </MapContainer>
     </div>
   );

@@ -12,15 +12,18 @@ interface BottomSheetProps {
   selectedRoute: Route | null;
 }
 
-// Custom hook to detect screen size for Framer Motion animations
+// Custom hook to detect screen size for Framer Motion animations.
+// Lazy initialiser reads the media query once on mount (avoids SSR mismatch)
+// so the effect body only needs to subscribe to future changes — never calls
+// setState synchronously, satisfying react-hooks/set-state-in-effect.
 function useIsDesktop() {
-  const [isDesktop, setIsDesktop] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(min-width: 768px)').matches;
+  });
 
   useEffect(() => {
-    // 768px matches Tailwind's 'md:' breakpoint
     const mediaQuery = window.matchMedia('(min-width: 768px)');
-    setIsDesktop(mediaQuery.matches);
-
     const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
     mediaQuery.addEventListener('change', handler);
     return () => mediaQuery.removeEventListener('change', handler);
@@ -95,7 +98,7 @@ export default function BottomSheet({ isOpen, onClose, selectedStop, selectedRou
                 
                 <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl text-blue-700 text-sm flex items-center leading-relaxed">
                   <MapPin size={20} className="mr-3 shrink-0" />
-                  The map is now displaying this route's path. Select a specific stop on the map to view arriving buses.
+                  The map is now displaying this route&apos;s path. Select a specific stop on the map to view arriving buses.
                 </div>
               </>
             )}
