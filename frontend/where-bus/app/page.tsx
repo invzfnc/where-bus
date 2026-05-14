@@ -94,7 +94,6 @@ export default function Home() {
           onStopClick={handleSelectStopOnRoute}
         />
       </div>
-      </div>
 
       {/* Full Screen Search Results */}
       <div
