@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bus, MapPin, Route as RouteIcon } from 'lucide-react';
 import { Stop, Route } from '@/app/page';
@@ -37,6 +37,15 @@ function useIsDesktop() {
 
 export default function BottomSheet({ isOpen, onClose, selectedStop, selectedRoute, routeStops, onSelectStop }: BottomSheetProps) {
   const isDesktop = useIsDesktop();
+
+  // Ref attached to whichever stop row is currently selected.
+  const selectedRowRef = useRef<HTMLDivElement>(null);
+
+  // Scroll the selected stop into view whenever it changes (map tap or panel tap).
+  useEffect(() => {
+    if (!selectedStop || !selectedRowRef.current) return;
+    selectedRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [selectedStop?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <AnimatePresence>
@@ -97,7 +106,7 @@ export default function BottomSheet({ isOpen, onClose, selectedStop, selectedRou
                       .map((stop) => {
                       const isSelected = selectedStop?.id === stop.id;
                       return (
-                        <div key={stop.id}>
+                        <div key={stop.id} ref={isSelected ? selectedRowRef : null}>
                           {/* Stop row */}
                           <button
                             onClick={() => onSelectStop(stop)}
