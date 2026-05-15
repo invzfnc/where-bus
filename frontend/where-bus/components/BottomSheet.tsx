@@ -55,34 +55,45 @@ export default function BottomSheet({ isOpen, onClose, selectedStop, selectedRou
   }, [selectedStop?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Routes serving the selected stop (Branch 2 — stop selected with no route).
-  const [stopRoutes, setStopRoutes] = useState<StopRoute[] | null>(null);
+  // stopRoutesForId tracks which stop the cached routes belong to.
+  // Comparing it to selectedStop.id lets us show a loading state between stops
+  // without touching state synchronously inside the effect body, and — crucially —
+  // prevents rendering <EtaList> with stale routes while the new fetch is in-flight
+  // (which caused a spurious ETA request every time a new stop was selected).
+  const [stopRoutes, setStopRoutes] = useState<StopRoute[]>([]);
+  const [stopRoutesForId, setStopRoutesForId] = useState<string | null>(null);
   const [stopRoutesError, setStopRoutesError] = useState(false);
 
-  // Fetch routes for the selected stop. Resets to loading state between stops by
-  // deferring the reset into a microtask (keeps setState out of the synchronous
-  // effect body, satisfying react-hooks/set-state-in-effect).
   useEffect(() => {
     if (!selectedStop) return;
 
     let cancelled = false;
-
-    Promise.resolve().then(() => {
-      if (!cancelled) {
-        setStopRoutes(null);
-        setStopRoutesError(false);
-      }
-    });
 
     fetch(`/api/transit/stops/${encodeURIComponent(selectedStop.id)}/routes`)
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
       })
-      .then((data: StopRoute[]) => { if (!cancelled) setStopRoutes(data); })
-      .catch(() => { if (!cancelled) setStopRoutesError(true); });
+      .then((data: StopRoute[]) => {
+        if (!cancelled) {
+          setStopRoutes(data);
+          setStopRoutesForId(selectedStop.id);
+          setStopRoutesError(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStopRoutesError(true);
+          setStopRoutesForId(selectedStop.id);
+        }
+      });
 
     return () => { cancelled = true; };
   }, [selectedStop?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // True while the in-flight fetch has not yet resolved for the current stop.
+  // During this window we show a spinner and never render <EtaList>.
+  const stopRoutesStale = stopRoutesForId !== selectedStop?.id;
 
   return (
     <AnimatePresence>
@@ -181,14 +192,14 @@ export default function BottomSheet({ isOpen, onClose, selectedStop, selectedRou
                 </h2>
                 <p className="text-sm text-gray-500 mb-4 ml-7">Stop ID: {selectedStop.id}</p>
 
-                {stopRoutesError ? (
-                  <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-sm text-center">
-                    Failed to load routes. Please try again.
-                  </div>
-                ) : stopRoutes === null ? (
+                {stopRoutesStale ? (
                   <div className="flex items-center justify-center py-10 text-gray-400">
                     <div className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin mr-2" />
                     <span className="text-sm">Loading routes…</span>
+                  </div>
+                ) : stopRoutesError ? (
+                  <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-sm text-center">
+                    Failed to load routes. Please try again.
                   </div>
                 ) : stopRoutes.length === 0 ? (
                   <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl flex flex-col items-center justify-center py-8 text-gray-400">
