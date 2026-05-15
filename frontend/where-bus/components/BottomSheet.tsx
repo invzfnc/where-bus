@@ -6,6 +6,13 @@ import { Bus, MapPin, Route as RouteIcon } from 'lucide-react';
 import { Stop, Route } from '@/app/page';
 import EtaList from '@/components/EtaList';
 
+interface StopRoute {
+  shortName: string;
+  longName: string;
+  servesOutbound: boolean;
+  servesInbound: boolean;
+}
+
 interface BottomSheetProps {
   isOpen: boolean;
   onClose: () => void;
@@ -45,6 +52,36 @@ export default function BottomSheet({ isOpen, onClose, selectedStop, selectedRou
   useEffect(() => {
     if (!selectedStop || !selectedRowRef.current) return;
     selectedRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [selectedStop?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Routes serving the selected stop (Branch 2 — stop selected with no route).
+  const [stopRoutes, setStopRoutes] = useState<StopRoute[] | null>(null);
+  const [stopRoutesError, setStopRoutesError] = useState(false);
+
+  // Fetch routes for the selected stop. Resets to loading state between stops by
+  // deferring the reset into a microtask (keeps setState out of the synchronous
+  // effect body, satisfying react-hooks/set-state-in-effect).
+  useEffect(() => {
+    if (!selectedStop) return;
+
+    let cancelled = false;
+
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        setStopRoutes(null);
+        setStopRoutesError(false);
+      }
+    });
+
+    fetch(`/api/transit/stops/${encodeURIComponent(selectedStop.id)}/routes`)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data: StopRoute[]) => { if (!cancelled) setStopRoutes(data); })
+      .catch(() => { if (!cancelled) setStopRoutesError(true); });
+
+    return () => { cancelled = true; };
   }, [selectedStop?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -136,18 +173,58 @@ export default function BottomSheet({ isOpen, onClose, selectedStop, selectedRou
               </>
 
             ) : selectedStop ? (
-              /* Branch 2: Stop selected from search with no route */
+              /* Branch 2: Stop selected from search — show serving routes + live ETAs */
               <>
                 <h2 className="text-xl font-bold text-gray-900 mb-1 flex items-center">
                   <MapPin size={20} className="mr-2 text-gray-500" />
                   {selectedStop.name}
                 </h2>
-                <p className="text-sm text-gray-500 mb-5 ml-7">Stop ID: {selectedStop.id}</p>
+                <p className="text-sm text-gray-500 mb-4 ml-7">Stop ID: {selectedStop.id}</p>
 
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl flex flex-col items-center justify-center text-gray-400 py-8">
-                  <Bus size={24} className="mb-2 opacity-50" />
-                  <p className="text-sm text-center">Search for a route, then tap this stop on the map to see live ETAs.</p>
-                </div>
+                {stopRoutesError ? (
+                  <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-sm text-center">
+                    Failed to load routes. Please try again.
+                  </div>
+                ) : stopRoutes === null ? (
+                  <div className="flex items-center justify-center py-10 text-gray-400">
+                    <div className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin mr-2" />
+                    <span className="text-sm">Loading routes…</span>
+                  </div>
+                ) : stopRoutes.length === 0 ? (
+                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl flex flex-col items-center justify-center py-8 text-gray-400">
+                    <Bus size={24} className="mb-2 opacity-50" />
+                    <p className="text-sm text-center">No routes serve this stop.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {stopRoutes.map((route) => (
+                      <div key={route.shortName} className="rounded-2xl border border-gray-100 overflow-hidden">
+                        {/* Route header */}
+                        <div className="flex items-center px-3 py-2.5 bg-gray-50 border-b border-gray-100">
+                          <RouteIcon size={16} className="mr-2 text-blue-500 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <span className="font-semibold text-gray-900 text-sm">{route.shortName}</span>
+                            {route.longName && (
+                              <span className="text-xs text-gray-500 ml-2 truncate block">{route.longName}</span>
+                            )}
+                          </div>
+                          <div className="flex gap-1 ml-2 shrink-0">
+                            {route.servesOutbound && (
+                              <span className="text-xs bg-gray-200 text-gray-600 rounded-full px-2 py-0.5">Out</span>
+                            )}
+                            {route.servesInbound && (
+                              <span className="text-xs bg-gray-200 text-gray-600 rounded-full px-2 py-0.5">In</span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Live ETAs for this route at this stop */}
+                        <div className="p-3">
+                          <EtaList routeId={route.shortName} stopId={selectedStop.id} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
 
             ) : null}
