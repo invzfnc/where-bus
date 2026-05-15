@@ -11,6 +11,7 @@ export interface Stop {
   name: string;
   latitude: number;
   longitude: number;
+  category?: string; // "rapid-bus-kl" | "rapid-bus-mrtfeeder"
 }
 
 export interface Route {

@@ -89,24 +89,35 @@ export default function SearchResultsPanel({
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-2">
               Stops
             </p>
-            {stopResults.map((stop) => (
-              <div
-                key={stop.id}
-                onClick={() => onSelectStop(stop)}
-                className="flex items-center p-4 bg-white/80 rounded-2xl border
-                border-white/40 shadow-sm cursor-pointer transition-all
-                duration-200 hover:bg-white hover:shadow-xl hover:scale-[1.01]
-                active:scale-[0.99]"
-              >
-                <div className="bg-gray-100 p-3 rounded-full mr-4 text-gray-600">
-                  <MapPin size={20} />
+            {stopResults.map((stop) => {
+              const isMRTFeeder = stop.category === 'rapid-bus-mrtfeeder';
+              const iconColor   = isMRTFeeder ? undefined : '#880808';
+              const iconLabel   = isMRTFeeder ? 'MRT Feeder stop' : 'Rapid Bus stop';
+              return (
+                <div
+                  key={stop.id}
+                  onClick={() => onSelectStop(stop)}
+                  className="flex items-center p-4 bg-white/80 rounded-2xl border
+                  border-white/40 shadow-sm cursor-pointer transition-all
+                  duration-200 hover:bg-white hover:shadow-xl hover:scale-[1.01]
+                  active:scale-[0.99]"
+                >
+                  <div
+                    className="bg-gray-100 p-3 rounded-full mr-4 text-gray-600"
+                    title={iconLabel}
+                    aria-label={iconLabel}
+                  >
+                    <MapPin size={20} color={iconColor} />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900">{stop.name}</h3>
+                    <p className="text-xs text-gray-500">
+                      {isMRTFeeder ? 'MRT Feeder' : 'RapidKL Bus'} ({stop.id})
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900">{stop.name}</h3>
-                  <p className="text-xs text-gray-500">Stop ID: {stop.id}</p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
