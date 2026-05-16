@@ -179,6 +179,7 @@ public class TransitService {
      * the internal GTFS key (e.g. "30000016"). Both are stored; shortNameToRouteId maps between them.
      */
     private void loadRoutes(String folderPath) throws Exception {
+        String category = folderPath.substring(folderPath.lastIndexOf('/') + 1);
         ClassPathResource resource = new ClassPathResource(folderPath + "/routes.txt");
 
         try (CSVReader reader = new CSVReader(new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
@@ -195,7 +196,9 @@ public class TransitService {
                     System.out.println("⚠️  Route ID collision: " + id + " — overwriting with updated definition.");
                 }
 
-                routeDirectory.put(id, new Route(id, name, longName));
+                Route route = new Route(id, name, longName);
+                route.setCategory(category);
+                routeDirectory.put(id, route);
 
                 // Register the short name → internal ID mapping.
                 // If two routes share a short name (shouldn't happen, but log it).

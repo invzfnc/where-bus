@@ -21,6 +21,9 @@ public class Route {
     @Schema(description = "Destination display text for inbound direction (direction_id = 1).", example = "STESEN LRT UNIVERSITI")
     private String headsignInbound;
 
+    @Schema(description = "Source feed network. Used by the frontend for route badge styling.", example = "rapid-bus-kl")
+    private String category;
+
     public Route(String id, String name, String longName) {
         this.id = id;
         this.name = name;
@@ -41,4 +44,7 @@ public class Route {
 
     public String getHeadsignInbound() { return headsignInbound; }
     public void setHeadsignInbound(String headsignInbound) { this.headsignInbound = headsignInbound; }
+
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
 }
