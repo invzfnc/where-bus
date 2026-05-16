@@ -20,6 +20,7 @@ interface BottomSheetProps {
   selectedStop: Stop | null;
   selectedRoute: Route | null;
   routeStops: Stop[];
+  routeStopsError?: boolean;
   onSelectStop: (stop: Stop) => void;
 }
 
@@ -43,7 +44,7 @@ function useIsDesktop() {
   return isDesktop;
 }
 
-export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRoute, routeStops, onSelectStop }: BottomSheetProps) {
+export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRoute, routeStops, routeStopsError, onSelectStop }: BottomSheetProps) {
   const isDesktop = useIsDesktop();
 
   // Ref attached to whichever stop row is currently selected.
@@ -164,7 +165,11 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
                 </h2>
                 <p className="text-sm text-gray-500 mb-4 ml-7">{selectedRoute.longName}</p>
 
-                {routeStops.length === 0 ? (
+                {routeStopsError ? (
+                  <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-sm text-center">
+                    Failed to load stops. Please try again.
+                  </div>
+                ) : routeStops.length === 0 ? (
                   /* Loading state */
                   <div className="flex items-center justify-center py-10 text-gray-400">
                     <div className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin mr-2" />

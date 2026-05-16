@@ -49,22 +49,39 @@ export default function Home() {
   const [selectedStop, setSelectedStop] = useState<Stop | null>(null);
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
   const [routeStops, setRouteStops] = useState<Stop[]>([]);
+  const [routeStopsError, setRouteStopsError] = useState(false);
+  // Incremented on every onSelectRoute call so the effect always re-fires,
+  // even when the same Route object reference is reselected after returning
+  // to search (which would otherwise be a no-op due to Object.is equality).
+  const [routeSelectionKey, setRouteSelectionKey] = useState(0);
 
   // Fetch the route's stop list whenever the selected route changes.
-  // We only call setRouteStops inside the async callback (never synchronously
-  // in the effect body) to satisfy the react-hooks/set-state-in-effect rule.
-  // Clearing routeStops is handled in the event handlers below.
+  // Uses AbortController (mirrors EtaList) so rapid re-selects abort the
+  // in-flight request and never call setRouteStops with stale data.
+  // Clearing routeStops is handled in the event handlers below, never here.
   useEffect(() => {
     if (!selectedRoute) return;
 
-    let cancelled = false;
-    fetch(`/api/transit/routes/${encodeURIComponent(selectedRoute.name)}/path`)
-      .then((res) => res.json())
-      .then((data: Stop[]) => { if (!cancelled) setRouteStops(data); })
-      .catch((err) => console.error("Failed to fetch route path", err));
+    const controller = new AbortController();
+    fetch(`/api/transit/routes/${encodeURIComponent(selectedRoute.name)}/path`, {
+      signal: controller.signal,
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data: Stop[]) => {
+        setRouteStopsError(false);
+        setRouteStops(data);
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+        console.error('Failed to fetch route path', err);
+        setRouteStopsError(true);
+      });
 
-    return () => { cancelled = true; };
-  }, [selectedRoute]);
+    return () => controller.abort();
+  }, [selectedRoute, routeSelectionKey]);
 
   // The Fetch Function connecting to Spring Boot
   const handleSearch = async (query: string) => {
@@ -105,6 +122,7 @@ export default function Home() {
     setSelectedStop(null);
     setSelectedRoute(null);
     setRouteStops([]);
+    setRouteStopsError(false);
     setSearchQuery("");
     setStopResults([]);
     setRouteResults([]);
@@ -171,13 +189,16 @@ export default function Home() {
               setSelectedStop(stop);
               setSelectedRoute(null);
               setRouteStops([]);
+              setRouteStopsError(false);
               setUiState("STOP_SELECTED");
               setIsSheetOpen(true);
             }}
             onSelectRoute={(route) => {
               setSelectedRoute(route);
               setSelectedStop(null);
-              setRouteStops([]); // clear stale stops immediately; effect will repopulate
+              setRouteStops([]);
+              setRouteStopsError(false);
+              setRouteSelectionKey(k => k + 1);
               setUiState("ROUTE_SELECTED");
               setIsSheetOpen(true);
             }}
@@ -201,6 +222,7 @@ export default function Home() {
         selectedStop={selectedStop}
         selectedRoute={selectedRoute}
         routeStops={routeStops}
+        routeStopsError={routeStopsError}
         onSelectStop={handleSelectStopOnRoute}
       />
     </main>

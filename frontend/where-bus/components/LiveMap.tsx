@@ -416,7 +416,11 @@ export default function LiveMap({ selectedStop, selectedRoute, routeStops, onSto
         ))}
 
         {selectedStop && (
-          <Marker position={[selectedStop.latitude, selectedStop.longitude]} icon={MinimalGrayIcon}>
+          <Marker
+            position={[selectedStop.latitude, selectedStop.longitude]}
+            icon={MinimalGrayIcon}
+            eventHandlers={{ click: () => onStopClick(selectedStop) }}
+          >
             <Tooltip permanent direction="top" offset={[0, -10]}>
               {selectedStop.name}
             </Tooltip>
