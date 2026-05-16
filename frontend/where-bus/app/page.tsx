@@ -88,7 +88,14 @@ export default function Home() {
     setSearchQuery("");
     setStopResults([]);
     setRouteResults([]);
-    setUiState("STANDBY");
+    setIsSheetOpen(true);
+    if (selectedRoute) {
+      setUiState("ROUTE_SELECTED");
+    } else if (selectedStop) {
+      setUiState("STOP_SELECTED");
+    } else {
+      setUiState("STANDBY");
+    }
   };
 
   // Full home reset: clears selection, route stops, search, and panel.
