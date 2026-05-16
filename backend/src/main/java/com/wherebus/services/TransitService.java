@@ -581,6 +581,7 @@ public class TransitService {
             payload.put("headsignInbound", route.getHeadsignInbound());
             payload.put("servesOutbound", flags[0]);
             payload.put("servesInbound", flags[1]);
+            payload.put("category", route.getCategory());
             results.add(payload);
         }
 
