@@ -205,7 +205,7 @@ function MapUpdater({
       const bounds = L.latLngBounds(routeStops.map(s => [s.latitude, s.longitude]));
       map.fitBounds(bounds, {
         paddingTopLeft: isDesktop ? (isSheetOpen ? [420, 50] : [50, 50]) : [50, 50],
-        paddingBottomRight: isDesktop ? [50, 50] : [50, (window?.innerHeight || 800) * 0.55],
+        paddingBottomRight: isDesktop ? [50, 50] : [50, isSheetOpen ? (window?.innerHeight || 800) * 0.55 : 50],
         animate: true,
         duration: 1.5,
       });
@@ -218,7 +218,7 @@ function MapUpdater({
 
       if (isDesktop && isSheetOpen) {
         targetPoint.x -= 200;
-      } else if (!isDesktop) {
+      } else if (!isDesktop && isSheetOpen) {
         targetPoint.y += (window?.innerHeight || 800) * 0.25;
       }
 
