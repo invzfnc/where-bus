@@ -5,6 +5,7 @@ import { Bus } from 'lucide-react';
 
 interface EtaEntry {
   distanceMeters: number;
+  stopsAway: number | null;
   licensePlate: string;
   directionLabel: string;
   directionId: number;
@@ -103,7 +104,9 @@ export default function EtaList({ routeId, stopId }: EtaListProps) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">{bus.licensePlate}</p>
-                  <p className="text-xs text-gray-500">{Math.round(bus.distanceMeters)} m away</p>
+                  {bus.stopsAway != null && (
+                    <p className="text-xs text-gray-500">{bus.stopsAway === 1 ? '1 stop away' : `${bus.stopsAway} stops away`}</p>
+                  )}
                 </div>
                 <span className="text-base font-bold text-gray-900 ml-2 shrink-0">
                   {bus.etaFormatted}
