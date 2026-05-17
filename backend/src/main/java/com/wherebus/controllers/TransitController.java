@@ -38,7 +38,7 @@ import java.util.*;
  */
 @RestController
 @RequestMapping("/api/transit")
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = {"http://localhost:3000", "where-bus-app.vercel.app"})
 @Tag(name = "Transit", description = "Routes, stops, live vehicle positions, and ETA predictions.")
 public class TransitController {
 
