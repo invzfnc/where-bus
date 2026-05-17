@@ -2,7 +2,7 @@
 
 A real-time bus tracking web app for Kuala Lumpur's RapidKL and MRT Feeder networks. Enter your stop, see which buses are coming and how far away they are.
 
-> Note: The frontend is still under development at the time of writing, and only partial functionality is currently supported.
+Live Demo: https://where-bus-app.vercel.app/
 
 ## Features
 
@@ -11,8 +11,6 @@ A real-time bus tracking web app for Kuala Lumpur's RapidKL and MRT Feeder netwo
 - **Route discovery**: search stops and routes by name, or look up every route serving a specific stop
 - **Direction awareness**: outbound and inbound buses are distinguished so you only see buses going your way
 - **Stop path visualisation**: full ordered stop sequence for any route, ready to draw as a map polyline
-
----
 
 ## Tech Stack
 
@@ -25,8 +23,6 @@ A real-time bus tracking web app for Kuala Lumpur's RapidKL and MRT Feeder netwo
 | **Animation** | Framer Motion |- |
 | **API Docs** |- | Swagger / OpenAPI 3 |
 | **Build** | npm | Maven |
-
----
 
 ## Architecture
 
@@ -83,13 +79,15 @@ data.gov.my enforces a limit of 4 requests per minute across all GTFS Realtime e
 
 </details>
 
----
 
 ## Project Structure
 
+<details>
+<summary><strong>Click to expand</strong></summary>
+
 ```
 where-bus/
-├── backend/                        # Spring Boot application
+├── backend/                                   # Spring Boot application
 │   └── src/main/
 │       ├── java/com/wherebus/
 │       │   ├── controllers/
@@ -119,11 +117,31 @@ where-bus/
 │           │       ├── stop_times.txt
 │           │       └── shapes.txt
 │           └── application.properties
-├── frontend/                       # Next.js frontend (Work in progress, full docs coming soon)
+└── frontend/                           # Next.js frontend
     └── where-bus/
+        ├── app/
+        │   ├── globals.css             # Global styles
+        │   ├── icon.svg                # App icon
+        │   ├── layout.tsx              # Root layout
+        │   └── page.tsx                # Entry page
+        ├── components/
+        │   ├── BottomSheet.tsx         # Sliding bottom panel for mobile UI
+        │   ├── EtaList.tsx             # ETA results list
+        │   ├── LiveMap.tsx             # Leaflet map with live bus positions
+        │   ├── SearchBar.tsx           # Stop and route search input
+        │   └── SearchResultsPanel.tsx  # Search results dropdown
+        ├── .env.example                # Environment variable template
+        ├── .gitignore
+        ├── eslint.config.mjs           # Linting config
+        ├── next-env.d.ts               # Next.js TypeScript declarations
+        ├── next.config.ts              # Next.js config and API proxy rewrites
+        ├── package.json
+        ├── package-lock.json
+        ├── postcss.config.mjs          # PostCSS config for Tailwind
+        └── tsconfig.json               # TypeScript config
 ```
 
----
+</details>
 
 ## Getting Started
 
@@ -137,8 +155,6 @@ where-bus/
 | IntelliJ IDEA | Any | Recommended for backend |
 
 **Maven installation:** Download the zip from [maven.apache.org](https://maven.apache.org/download.cgi), extract it, and add the `bin/` folder to your system PATH. On macOS you can use `brew install maven`, on Windows `choco install maven`.
-
----
 
 ### Backend
 
@@ -174,16 +190,17 @@ http://localhost:8080/swagger-ui/index.html
 
 All endpoints are documented here with example values and a live "Try it out" feature.
 
----
-
 ### Frontend
 
-> The frontend is currently in development. Only partial functions are supported.
-
 1. Navigate to `frontend/where-bus/`
-2. Run `npm install`
-3. Run `npm run dev`
-4. Open `http://localhost:3000`
+2. Copy the environment template:
+   ```bash
+      cp .env.example .env.local
+   ```
+3. Open `.env.local`, `BACKEND_API_URL` is set to `http://localhost:8000` by default (local lesting and development). You can change it to the deployed backend URL.
+4. Run `npm install`
+5. Run `npm run dev`
+6. Open `http://localhost:3000`
 
 ### Accessing on mobile (same network)
 
@@ -198,6 +215,15 @@ To test on a phone while running the dev server on your computer:
    ```
    http://your-ip-address:3000
    ```
+
+## Deployment
+
+| Service | Platform | Trigger |
+|---|---|---|
+| Backend | Google Cloud Run (`us-central1`) | Manual (`gcloud run deploy`) |
+| Frontend | Vercel | Auto-deploy on push to `main` |
+
+The frontend proxies all `/api/*` requests to the backend via Next.js rewrites, configured through the `BACKEND_API_URL` environment variable. The backend URL is never exposed to the browser.
 
 ## API Reference
 
@@ -215,8 +241,6 @@ All `routeId` parameters accept the **route short name** as displayed on buses (
 | `GET` | `/transit/vehicles` | `routeId` - e.g. `T815` | Live GPS coordinates, bearing, and direction for all active buses on a route. |
 | `GET` | `/transit/eta` | `routeId` - e.g. `T815`, `stopId` - e.g. `12000802` | Approaching buses sorted by ETA. Excludes buses that have passed the stop and buses more than 35 minutes away. Each result includes `directionId` (0 = outbound, 1 = inbound) for direction filtering, and `stopsAway` (integer stop count between the bus and the target stop, `null` if shape data is unavailable for the route). |
 | `GET` | `/transit/debug-fleet` | - | Raw feed diagnostic: total active buses, all broadcasted route IDs, and 5 sample vehicle entries. Use when `/vehicles` returns unexpected results. |
-
----
 
 ## Known Limitations
 
