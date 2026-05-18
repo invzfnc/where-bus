@@ -15,14 +15,14 @@ Live Demo: https://where-bus-app.vercel.app/
 
 ## Preview
 
-<div style="text-align: center;">
+<div style="text-align: center; align-items: center">
   <img src="https://raw.githubusercontent.com/invzfnc/where-bus/main/docs/desktop.png" alt="Desktop view">
-  <p>Desktop view</p>
+  <p align="center">Desktop view</p>
 </div>
 
 <div style="text-align: center;">
   <img src="https://raw.githubusercontent.com/invzfnc/where-bus/main/docs/mobile.png" alt="Mobile view">
-  <p>Mobile view</p>
+  <p align="center">Mobile view</p>
 </div>
 
 ## Tech Stack
