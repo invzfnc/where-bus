@@ -107,8 +107,11 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
           exit={isDesktop ? { x: '-100%', y: 0 } : { y: '100%', x: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
           
-          // 2. Disable drag gesture on desktop, enable 'y' drag on mobile
+          // 2. Disable drag gesture on desktop, enable 'y' drag on mobile.
+          //    dragMomentum={false} prevents post-release inertia from carrying
+          //    a fast list-scroll flick past the 100px dismiss threshold.
           drag={isDesktop ? false : "y"}
+          dragMomentum={false}
           dragConstraints={{ top: 0 }}
           dragElastic={0.05}
           onDragEnd={(e, info) => {
@@ -138,8 +141,11 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
             <X size={18} />
           </button>
 
-          {/* Scrollable Content inside the sheet */}
-          <div className="px-6 pb-8 pt-2 overflow-y-auto flex-1 md:pt-8">
+          {/* Scrollable Content inside the sheet.
+              touch-pan-y: browser claims vertical touch gestures here for
+              scrolling, so they don't bubble up to the Framer Motion drag handler.
+              overscroll-contain: prevents scroll from propagating to the map below. */}
+          <div className="px-6 pb-8 pt-2 overflow-y-auto flex-1 touch-pan-y overscroll-contain md:pt-8">
             
             {/* Branch 1: Route is selected — show full stop list with inline ETAs */}
             {selectedRoute ? (
