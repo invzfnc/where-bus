@@ -100,13 +100,13 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
   return (
     <AnimatePresence>
       {isOpen && (
-        <motion.div 
+        <motion.div
           // 1. Dynamic Animation: Slide from left on desktop, bottom on mobile
           initial={isDesktop ? { x: '-100%', y: 0 } : { y: '100%', x: 0 }}
           animate={{ x: 0, y: 0 }}
           exit={isDesktop ? { x: '-100%', y: 0 } : { y: '100%', x: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-          
+
           // 2. Disable drag gesture on desktop, enable 'y' drag on mobile.
           //    dragMomentum={false} prevents post-release inertia from carrying
           //    a fast list-scroll flick past the 100px dismiss threshold.
@@ -119,7 +119,7 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
               onHide?.();
             }
           }}
-          
+
           // 3. Responsive Tailwind Styling (Mobile default + md: overrides)
           className="absolute z-[60] bg-white flex flex-col
                      /* Mobile styles */
@@ -146,7 +146,7 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
               scrolling, so they don't bubble up to the Framer Motion drag handler.
               overscroll-contain: prevents scroll from propagating to the map below. */}
           <div className="px-6 pb-8 pt-2 overflow-y-auto flex-1 touch-pan-y overscroll-contain md:pt-8">
-            
+
             {/* Branch 1: Route is selected — show full stop list with inline ETAs */}
             {selectedRoute ? (
               <>
@@ -155,7 +155,7 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
                     const isMRT = selectedRoute.category
                       ? selectedRoute.category === 'rapid-bus-mrtfeeder'
                       : /^\d+$/.test(selectedRoute.id);
-                    const iconColor = isMRT ? undefined : '#880808';
+                    const iconColor = '#D95F30';
                     const iconLabel = isMRT ? 'MRT Feeder route' : 'RapidKL Bus route';
                     return (
                       <span
@@ -196,9 +196,10 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
                             onClick={() => onSelectStop(stop)}
                             className={`w-full text-left rounded-2xl px-3 py-2.5 transition-all duration-150 border ${
                               isSelected
-                                ? 'bg-gray-100 border-gray-300 border-l-4 border-l-gray-600'
+                                ? 'bg-gray-100 border-gray-300 border-l-4'
                                 : 'bg-gray-50 border-gray-100 hover:bg-gray-100'
                             }`}
+                            style={isSelected ? { borderLeftColor: '#D95F30' } : {}}
                           >
                             <p className={`text-sm leading-snug ${isSelected ? 'font-semibold text-gray-900' : 'font-medium text-gray-800'}`}>
                               {stop.name}
@@ -223,7 +224,7 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
               /* Branch 2: Stop selected from search — show serving routes + live ETAs */
               <>
                 <h2 className="text-xl font-bold text-gray-900 mb-1 flex items-center">
-                  <MapPin size={20} className="mr-2 text-gray-500" />
+                  <MapPin size={20} className="mr-2" color="#D95F30" />
                   {selectedStop.name}
                 </h2>
                 <p className="text-sm text-gray-500 mb-4 ml-7">Stop ID: {selectedStop.id}</p>
@@ -248,7 +249,7 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
                       const isMRTFeeder = route.category
                         ? route.category === 'rapid-bus-mrtfeeder'
                         : route.shortName === route.longName;
-                      const iconColor   = isMRTFeeder ? undefined : '#880808';
+                      const iconColor   = '#D95F30';
                       const iconLabel   = isMRTFeeder ? 'MRT Feeder route' : 'RapidKL Bus route';
                       return (
                       <div key={route.shortName} className="rounded-2xl border border-gray-100 overflow-hidden">
@@ -271,10 +272,10 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
                           </div>
                           <div className="flex gap-1 ml-2 shrink-0">
                             {route.servesOutbound && (
-                              <span className="text-xs bg-gray-200 text-gray-600 rounded-full px-2 py-0.5">Out</span>
+                              <span className="text-xs rounded-full px-2 py-0.5" style={{ backgroundColor: '#D95F3020', color: '#D95F30' }}>Out</span>
                             )}
                             {route.servesInbound && (
-                              <span className="text-xs bg-gray-200 text-gray-600 rounded-full px-2 py-0.5">In</span>
+                              <span className="text-xs rounded-full px-2 py-0.5" style={{ backgroundColor: '#4A8B8B20', color: '#4A8B8B' }}>In</span>
                             )}
                           </div>
                         </div>

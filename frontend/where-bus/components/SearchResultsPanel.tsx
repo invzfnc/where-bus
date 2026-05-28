@@ -2,6 +2,7 @@
 
 import { MapPin, Bus } from "lucide-react";
 import { Stop, Route } from "@/app/page";
+import { getRouteColor } from "@/lib/routeColors";
 
 interface SearchResultsPanelProps {
   stopResults: Stop[];
@@ -31,16 +32,16 @@ export default function SearchResultsPanel({
       overflow-y-auto
 
       rounded-3xl
-      bg-white/80
+      bg-white/90
       backdrop-blur-2xl
-      border border-white/30
+      border border-gray-200
       shadow-2xl
       p-5 space-y-6"
 
       >
         
         {!isSearching && (
-          <p className="text-sm text-center text-gray-400 mt-10">
+          <p className="text-sm text-center text-[#2B2926]/50 mt-10">
             Type a route number or stop name to begin...
           </p>
         )}
@@ -48,14 +49,14 @@ export default function SearchResultsPanel({
         {/* Dynamic Routes Section */}
         {routeResults.length > 0 && (
           <div className="space-y-3">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-2">
+            <p className="text-xs font-bold text-[#2B2926]/50 uppercase tracking-wider ml-2">
               Routes
             </p>
             {routeResults.map((route) => {
               const isMRTFeeder = route.category
                 ? route.category === 'rapid-bus-mrtfeeder'
                 : /^\d+$/.test(route.id);
-              const iconColor   = isMRTFeeder ? undefined : '#880808';
+              const routeColor  = getRouteColor(route.name);
               const iconLabel   = isMRTFeeder ? 'MRT Feeder route' : 'RapidKL Bus route';
               return (
                 <div
@@ -63,9 +64,9 @@ export default function SearchResultsPanel({
                   onClick={() => onSelectRoute(route)}
                   className="
                   flex items-center p-4
-                  bg-white/80
+                  bg-white/70
                   rounded-2xl
-                  border border-white/40
+                  border border-gray-100
                   shadow-sm
                   cursor-pointer
                   transition-all duration-200
@@ -73,17 +74,19 @@ export default function SearchResultsPanel({
                   hover:shadow-xl
                   hover:scale-[1.01]
                   active:scale-[0.99]"
+                  style={{ borderLeft: `4px solid ${routeColor}` }}
                 >
                   <div
-                    className="bg-gray-100 p-3 rounded-full mr-4 text-gray-600"
+                    className="p-3 rounded-full mr-4"
+                    style={{ backgroundColor: `${routeColor}20` }}
                     title={iconLabel}
                     aria-label={iconLabel}
                   >
-                    <Bus size={20} color={iconColor} />
+                    <Bus size={20} color={routeColor} />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-bold text-gray-900">{route.name}</h3>
-                    <p className="text-xs text-gray-500 line-clamp-1">
+                    <h3 className="font-bold text-[#2B2926]">{route.name}</h3>
+                    <p className="text-xs text-[#2B2926]/50 line-clamp-1">
                       {isMRTFeeder ? 'MRT Feeder' : 'RapidKL Bus'} · {route.longName}
                     </p>
                   </div>
@@ -96,32 +99,31 @@ export default function SearchResultsPanel({
         {/* Dynamic Stops Section */}
         {stopResults.length > 0 && (
           <div className="space-y-3">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-2">
+            <p className="text-xs font-bold text-[#2B2926]/50 uppercase tracking-wider ml-2">
               Stops
             </p>
             {stopResults.map((stop) => {
               const isMRTFeeder = stop.category === 'rapid-bus-mrtfeeder';
-              const iconColor   = isMRTFeeder ? undefined : '#880808';
               const iconLabel   = isMRTFeeder ? 'MRT Feeder stop' : 'Rapid Bus stop';
               return (
                 <div
                   key={stop.id}
                   onClick={() => onSelectStop(stop)}
-                  className="flex items-center p-4 bg-white/80 rounded-2xl border
-                  border-white/40 shadow-sm cursor-pointer transition-all
+                  className="flex items-center p-4 bg-white/70 rounded-2xl border
+                  border-gray-100 shadow-sm cursor-pointer transition-all
                   duration-200 hover:bg-white hover:shadow-xl hover:scale-[1.01]
                   active:scale-[0.99]"
                 >
                   <div
-                    className="bg-gray-100 p-3 rounded-full mr-4 text-gray-600"
+                    className="bg-gray-100 p-3 rounded-full mr-4"
                     title={iconLabel}
                     aria-label={iconLabel}
                   >
-                    <MapPin size={20} color={iconColor} />
+                    <MapPin size={20} color="#C2805F" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900">{stop.name}</h3>
-                    <p className="text-xs text-gray-500">
+                    <h3 className="font-semibold text-[#2B2926]">{stop.name}</h3>
+                    <p className="text-xs text-[#2B2926]/50">
                       {isMRTFeeder ? 'MRT Feeder' : 'RapidKL Bus'} ({stop.id})
                     </p>
                   </div>
