@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
   --background: #FFFFFF;
@@ -7,6 +8,28 @@
   --charcoal: #2B2926;
   --terracotta: #C2805F;
   --blush: #EDD5BE;
+}
+
+.dark {
+  --background: #0D0F10;
+  --foreground: #F0F2F3;
+  --bg-base: #0D0F10;
+  --bg-surface: #141718;
+  --bg-elevated: #1C1F21;
+  --bg-active: #212527;
+  --bg-map: var(--bg-base);
+  --bg-sidebar: var(--bg-surface);
+  --bg-card: var(--bg-elevated);
+  --bg-card-hover: var(--bg-active);
+  --bg-card-active: #1D281F;
+  --border-subtle: rgba(255,255,255,0.06);
+  --border-card: rgba(255,255,255,0.07);
+  --text-primary: #F0F2F3;
+  --text-secondary: #8A9199;
+  --text-muted: #4A5158;
+  --accent: #9CAF88;
+  --accent-dim: #9CAF8824;
+  --accent-glow: #9CAF8840;
 }
 
 @theme inline {

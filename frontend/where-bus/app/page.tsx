@@ -39,6 +39,20 @@ export type UIState =
 export default function Home() {
   const [uiState, setUiState] = useState<UIState>("STANDBY");
   const [isSheetOpen, setIsSheetOpen] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("theme") === "dark";
+  });
+
+  // Keep the document class and persisted preference in sync with state.
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", isDarkMode);
+    localStorage.setItem("theme", isDarkMode ? "dark" : "light");
+  }, [isDarkMode]);
+
+  const toggleDarkMode = () => {
+    setIsDarkMode(prev => !prev);
+  };
 
   // Data State
   const [searchQuery, setSearchQuery] = useState("");
@@ -144,7 +158,7 @@ export default function Home() {
   };
 
   return (
-    <main className="relative h-[100dvh] w-screen overflow-hidden bg-gray-50 font-sans">
+    <main className="relative h-[100dvh] w-screen overflow-hidden bg-gray-50 dark:bg-[var(--bg-map)] font-sans">
       {/* Background Map */}
 <div
         className={`
@@ -160,13 +174,14 @@ export default function Home() {
           onStopClick={handleSelectStopOnRoute}
           onResetToHome={resetToHome}
           isSheetOpen={isSheetOpen}
+          isDarkMode={isDarkMode}
         />
       </div>
 
       {/* Full Screen Search Results */}
       <div
     className={`
-    absolute inset-0 z-10
+    absolute inset-0 z-[55]
     transition-all duration-300 ease-out
     ${
       uiState === "SEARCHING"
@@ -189,6 +204,7 @@ export default function Home() {
           <SearchResultsPanel
             stopResults={stopResults}
             routeResults={routeResults}
+            isDarkMode={isDarkMode}
             onSelectStop={(stop) => {
               setSelectedStop(stop);
               setSelectedRoute(null);
@@ -222,18 +238,23 @@ export default function Home() {
         setStopResults([]);
         setRouteResults([]); }}
         onCancel={clearSearch}
+        isDarkMode={isDarkMode}
+        onToggleDark={toggleDarkMode}
       />
 
-      {/* Bottom Foreground: Draggable Data Sheet */}
-      <BottomSheet
-        isOpen={(uiState === "STOP_SELECTED" || uiState === "ROUTE_SELECTED") && isSheetOpen}
-        onHide={handleHideSheet}
-        selectedStop={selectedStop}
-        selectedRoute={selectedRoute}
-        routeStops={routeStops}
-        routeStopsError={routeStopsError}
-        onSelectStop={handleSelectStopOnRoute}
-      />
+      {/* Bottom Foreground: Draggable Data Sheet — hidden instantly while searching so it doesn't bleed through the overlay */}
+      <div className={uiState === "SEARCHING" ? "hidden" : ""}>
+        <BottomSheet
+          isOpen={(uiState === "STOP_SELECTED" || uiState === "ROUTE_SELECTED") && isSheetOpen}
+          onHide={handleHideSheet}
+          selectedStop={selectedStop}
+          selectedRoute={selectedRoute}
+          routeStops={routeStops}
+          routeStopsError={routeStopsError}
+          onSelectStop={handleSelectStopOnRoute}
+          isDarkMode={isDarkMode}
+        />
+      </div>
     </main>
   );
 }
