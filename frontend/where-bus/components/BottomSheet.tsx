@@ -22,6 +22,7 @@ interface BottomSheetProps {
   routeStops: Stop[];
   routeStopsError?: boolean;
   onSelectStop: (stop: Stop) => void;
+  isDarkMode?: boolean;
 }
 
 // Custom hook to detect screen size for Framer Motion animations.
@@ -44,8 +45,9 @@ function useIsDesktop() {
   return isDesktop;
 }
 
-export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRoute, routeStops, routeStopsError, onSelectStop }: BottomSheetProps) {
+export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRoute, routeStops, routeStopsError, onSelectStop, isDarkMode = false }: BottomSheetProps) {
   const isDesktop = useIsDesktop();
+  const accent = isDarkMode ? '#F97316' : '#5e6673';
 
   // Ref attached to whichever stop row is currently selected.
   const selectedRowRef = useRef<HTMLDivElement>(null);
@@ -121,21 +123,21 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
           }}
 
           // 3. Responsive Tailwind Styling (Mobile default + md: overrides)
-          className="absolute z-[60] bg-white flex flex-col
+          className="absolute z-[40] bg-white dark:bg-[var(--bg-sidebar)] flex flex-col
                      /* Mobile styles */
                      bottom-0 left-0 right-0 rounded-t-3xl h-[50dvh] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]
                      /* Desktop styles */
-                     md:top-0 md:bottom-0 md:right-auto md:w-[400px] md:h-[100dvh] md:rounded-none md:shadow-[4px_0_20px_rgba(0,0,0,0.1)]"
+                     md:top-0 md:bottom-0 md:right-auto md:w-[400px] md:h-[100dvh] md:rounded-none md:shadow-[4px_0_20px_rgba(0,0,0,0.1)] md:dark:border-r md:dark:border-[var(--border-subtle)]"
         >
           {/* Drag Handle Area (Hidden on desktop) */}
           <div className="w-full flex justify-center pt-4 pb-2 shrink-0 cursor-grab active:cursor-grabbing md:hidden">
-            <div className="w-12 h-1.5 bg-gray-300 rounded-full"></div>
+            <div className="w-12 h-1.5 bg-gray-300 dark:bg-[var(--text-muted)] rounded-full"></div>
           </div>
 
           {/* Desktop-only close (hide) button */}
           <button
             onClick={() => onHide?.()}
-            className="hidden md:flex absolute top-4 right-4 z-10 w-8 h-8 items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            className="hidden md:flex absolute top-4 right-4 z-10 w-8 h-8 items-center justify-center rounded-full text-gray-400 dark:text-[var(--text-muted)] hover:text-gray-700 dark:hover:text-[var(--text-primary)] hover:bg-gray-100 dark:hover:bg-[var(--bg-card-hover)] transition-colors"
             aria-label="Hide panel"
           >
             <X size={18} />
@@ -150,16 +152,16 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
             {/* Branch 1: Route is selected — show full stop list with inline ETAs */}
             {selectedRoute ? (
               <>
-                <h2 className="text-xl font-bold text-gray-900 mb-1 flex items-center">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-[var(--text-primary)] mb-1 flex items-center">
                   {(() => {
                     const isMRT = selectedRoute.category
                       ? selectedRoute.category === 'rapid-bus-mrtfeeder'
                       : /^\d+$/.test(selectedRoute.id);
-                    const iconColor = '#D95F30';
+                    const iconColor = accent;
                     const iconLabel = isMRT ? 'MRT Feeder route' : 'RapidKL Bus route';
                     return (
                       <span
-                        className="bg-gray-100 p-1.5 rounded-full mr-2 shrink-0 text-gray-600 inline-flex items-center justify-center"
+                        className="bg-gray-100 dark:bg-[var(--bg-card-hover)] p-1.5 rounded-full mr-2 shrink-0 text-gray-600 dark:text-[var(--text-primary)] inline-flex items-center justify-center"
                         title={iconLabel}
                         aria-label={iconLabel}
                       >
@@ -169,7 +171,7 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
                   })()}
                   {selectedRoute.name}
                 </h2>
-                <p className="text-sm text-gray-500 mb-4 ml-7">{selectedRoute.longName}</p>
+                <p className="text-sm text-gray-500 dark:text-[var(--text-secondary)] mb-4 ml-7">{selectedRoute.longName}</p>
 
                 {routeStopsError ? (
                   <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-sm text-center">
@@ -177,8 +179,8 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
                   </div>
                 ) : routeStops.length === 0 ? (
                   /* Loading state */
-                  <div className="flex items-center justify-center py-10 text-gray-400">
-                    <div className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin mr-2" />
+                  <div className="flex items-center justify-center py-10 text-gray-400 dark:text-[var(--text-muted)]">
+                    <div className="w-5 h-5 border-2 border-gray-300 dark:border-[var(--text-muted)] border-t-transparent rounded-full animate-spin mr-2" />
                     <span className="text-sm">Loading stops…</span>
                   </div>
                 ) : (
@@ -196,15 +198,15 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
                             onClick={() => onSelectStop(stop)}
                             className={`w-full text-left rounded-2xl px-3 py-2.5 transition-all duration-150 border ${
                               isSelected
-                                ? 'bg-gray-100 border-gray-300 border-l-4'
-                                : 'bg-gray-50 border-gray-100 hover:bg-gray-100'
+                                ? 'bg-gray-100 dark:bg-[var(--accent-dim)] border-gray-300 dark:border-[var(--border-card)] border-l-4 dark:shadow-[0_0_0_1px_var(--accent-glow)]'
+                                : 'bg-gray-50 dark:bg-[var(--bg-card)] border-gray-100 dark:border-[var(--border-card)] hover:bg-gray-100 dark:hover:bg-[var(--bg-card-hover)]'
                             }`}
-                            style={isSelected ? { borderLeftColor: '#D95F30' } : {}}
+                            style={isSelected ? { borderLeftColor: accent } : {}}
                           >
-                            <p className={`text-sm leading-snug ${isSelected ? 'font-semibold text-gray-900' : 'font-medium text-gray-800'}`}>
+                            <p className={`text-sm leading-snug ${isSelected ? 'font-semibold text-gray-900 dark:text-[var(--text-primary)]' : 'font-medium text-gray-800 dark:text-[var(--text-primary)]'}`}>
                               {stop.name}
                             </p>
-                            <p className="text-xs text-gray-400 mt-0.5">Stop ID: {stop.id}</p>
+                            <p className="text-xs text-gray-400 dark:text-[var(--text-secondary)] mt-0.5">Stop ID: {stop.id}</p>
                           </button>
 
                           {/* Inline ETA list — only for the selected stop */}
@@ -223,15 +225,15 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
             ) : selectedStop ? (
               /* Branch 2: Stop selected from search — show serving routes + live ETAs */
               <>
-                <h2 className="text-xl font-bold text-gray-900 mb-1 flex items-center">
-                  <MapPin size={20} className="mr-2" color="#D95F30" />
+                <h2 className="text-xl font-bold text-gray-900 dark:text-[var(--text-primary)] mb-1 flex items-center">
+                  <MapPin size={20} className="mr-2" color={accent} />
                   {selectedStop.name}
                 </h2>
-                <p className="text-sm text-gray-500 mb-4 ml-7">Stop ID: {selectedStop.id}</p>
+                <p className="text-sm text-gray-500 dark:text-[var(--text-secondary)] mb-4 ml-7">Stop ID: {selectedStop.id}</p>
 
                 {stopRoutesStale ? (
-                  <div className="flex items-center justify-center py-10 text-gray-400">
-                    <div className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin mr-2" />
+                  <div className="flex items-center justify-center py-10 text-gray-400 dark:text-[var(--text-muted)]">
+                    <div className="w-5 h-5 border-2 border-gray-300 dark:border-[var(--text-muted)] border-t-transparent rounded-full animate-spin mr-2" />
                     <span className="text-sm">Loading routes…</span>
                   </div>
                 ) : stopRoutesError ? (
@@ -239,7 +241,7 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
                     Failed to load routes. Please try again.
                   </div>
                 ) : stopRoutes.length === 0 ? (
-                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl flex flex-col items-center justify-center py-8 text-gray-400">
+                  <div className="p-4 bg-gray-50 dark:bg-[var(--bg-card)] border border-gray-200 dark:border-[var(--border-card)] rounded-2xl flex flex-col items-center justify-center py-8 text-gray-400 dark:text-[var(--text-muted)]">
                     <Bus size={24} className="mb-2 opacity-50" />
                     <p className="text-sm text-center">No routes serve this stop.</p>
                   </div>
@@ -249,12 +251,12 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
                       const isMRTFeeder = route.category
                         ? route.category === 'rapid-bus-mrtfeeder'
                         : route.shortName === route.longName;
-                      const iconColor   = '#D95F30';
+                      const iconColor   = accent;
                       const iconLabel   = isMRTFeeder ? 'MRT Feeder route' : 'RapidKL Bus route';
                       return (
-                      <div key={route.shortName} className="rounded-2xl border border-gray-100 overflow-hidden">
+                      <div key={route.shortName} className="rounded-2xl border border-gray-100 dark:border-[var(--border-card)] overflow-hidden">
                         {/* Route header */}
-                        <div className="flex items-center px-3 py-2.5 bg-gray-50 border-b border-gray-100">
+                        <div className="flex items-center px-3 py-2.5 bg-gray-50 dark:bg-[var(--bg-card)] border-b border-gray-100 dark:border-[var(--border-card)]">
                           <span
                             className="mr-2 shrink-0 text-gray-600"
                             title={iconLabel}
@@ -263,19 +265,23 @@ export default function BottomSheet({ isOpen, onHide, selectedStop, selectedRout
                             <RouteIcon size={16} color={iconColor} />
                           </span>
                           <div className="flex-1 min-w-0">
-                            <span className="font-semibold text-gray-900 text-sm">{route.shortName}</span>
+                            <span className="font-semibold text-gray-900 dark:text-[var(--text-primary)] text-sm">{route.shortName}</span>
                             {route.longName && (
-                              <span className="text-xs text-gray-500 ml-2 truncate block">
+                              <span className="text-xs text-gray-500 dark:text-[var(--text-secondary)] ml-2 truncate block">
                                 {isMRTFeeder ? 'MRT Feeder' : 'RapidKL Bus'} · {route.longName}
                               </span>
                             )}
                           </div>
                           <div className="flex gap-1 ml-2 shrink-0">
                             {route.servesOutbound && (
-                              <span className="text-xs rounded-full px-2 py-0.5" style={{ backgroundColor: '#D95F3020', color: '#D95F30' }}>Out</span>
+                              <span className="text-xs rounded-full px-2 py-0.5" style={isDarkMode
+                                ? { backgroundColor: '#F9731618', color: '#F97316' }
+                                : { backgroundColor: '#5e667315', color: '#5e6673' }}>Out</span>
                             )}
                             {route.servesInbound && (
-                              <span className="text-xs rounded-full px-2 py-0.5" style={{ backgroundColor: '#4A8B8B20', color: '#4A8B8B' }}>In</span>
+                              <span className="text-xs rounded-full px-2 py-0.5" style={isDarkMode
+                                ? { backgroundColor: '#4A8B8B20', color: '#4A8B8B' }
+                                : { backgroundColor: '#5e667315', color: '#5e6673' }}>In</span>
                             )}
                           </div>
                         </div>

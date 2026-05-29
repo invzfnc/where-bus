@@ -55,8 +55,8 @@ export default function EtaList({ routeId, stopId }: EtaListProps) {
   // Loading state: first fetch hasn't returned yet
   if (entries === null && !error) {
     return (
-      <div className="flex items-center justify-center py-8 text-gray-400">
-        <div className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin mr-2" />
+      <div className="flex items-center justify-center py-8 text-gray-400 dark:text-[var(--text-muted)]">
+        <div className="w-5 h-5 border-2 border-gray-300 dark:border-[var(--text-muted)] border-t-transparent rounded-full animate-spin mr-2" />
         <span className="text-sm">Loading ETAs…</span>
       </div>
     );
@@ -72,7 +72,7 @@ export default function EtaList({ routeId, stopId }: EtaListProps) {
 
   if (entries!.length === 0) {
     return (
-      <div className="p-4 bg-gray-50 border border-gray-200 rounded-2xl flex flex-col items-center justify-center py-8 text-gray-400">
+      <div className="p-4 bg-gray-50 dark:bg-[var(--bg-card)] border border-gray-200 dark:border-[var(--border-card)] rounded-2xl flex flex-col items-center justify-center py-8 text-gray-400 dark:text-[var(--text-muted)]">
         <Bus size={24} className="mb-2 opacity-50" />
         <p className="text-sm text-center">No buses approaching right now.</p>
       </div>
@@ -90,25 +90,25 @@ export default function EtaList({ routeId, stopId }: EtaListProps) {
     <div className="space-y-4">
       {Object.entries(grouped).map(([direction, buses]) => (
         <div key={direction}>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 capitalize">
+          <p className="text-xs font-semibold text-gray-400 dark:text-[var(--text-muted)] uppercase tracking-wide mb-2 capitalize">
             {direction}
           </p>
           <div className="space-y-2">
             {buses.map((bus) => (
               <div
                 key={bus.vehicleId}
-                className="flex items-center p-3 bg-gray-50 border border-gray-200 rounded-2xl"
+                className="flex items-center p-3 bg-gray-50 dark:bg-[var(--bg-card)] border border-gray-200 dark:border-[var(--border-card)] rounded-2xl"
               >
-                <div className="p-2 bg-gray-100 rounded-xl mr-3 shrink-0">
-                  <Bus size={18} className="text-gray-600" />
+                <div className="p-2 bg-gray-100 dark:bg-[var(--bg-card-hover)] rounded-xl mr-3 shrink-0">
+                  <Bus size={18} className="text-gray-600 dark:text-[var(--text-primary)]" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{bus.licensePlate}</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-[var(--text-primary)] truncate">{bus.licensePlate}</p>
                   {bus.stopsAway != null && (
-                    <p className="text-xs text-gray-500">{bus.stopsAway === 1 ? '1 stop away' : `${bus.stopsAway} stops away`}</p>
+                    <p className="text-xs text-gray-500 dark:text-[var(--text-secondary)]">{bus.stopsAway === 1 ? '1 stop away' : `${bus.stopsAway} stops away`}</p>
                   )}
                 </div>
-                <span className="text-base font-bold text-gray-900 ml-2 shrink-0">
+                <span className="text-base font-bold text-gray-900 dark:text-[var(--text-primary)] ml-2 shrink-0">
                   {bus.etaFormatted}
                 </span>
               </div>
