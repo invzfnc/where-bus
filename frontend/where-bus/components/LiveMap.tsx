@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { LocateFixed } from 'lucide-react';
@@ -8,20 +8,36 @@ import 'leaflet/dist/leaflet.css';
 import { Stop, Route } from '@/app/page';
 
 const FSKTM_POSITION: [number, number] = [3.1280, 101.6505];
+const DARK_ACCENT = '#9CAF88';
+const LIGHT_LINE = '#5e6673';
+const LIGHT_DOT = '#374151';
 
-const MinimalGrayIcon = L.divIcon({
-  className: 'bg-transparent',
-  html: `<div style="width: 14px; height: 14px; background-color: #374151; border: 2px solid white; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.2);"></div>`,
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
-});
+function createStopIcon(color: string): L.DivIcon {
+  return L.divIcon({
+    className: 'bg-transparent',
+    html: `<div style="width: 14px; height: 14px; background-color: ${color}; border: 2px solid white; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.2);"></div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  });
+}
 
-const UserLocationIcon = L.divIcon({
-  className: 'bg-transparent',
-  html: `<div style="width: 18px; height: 18px; background-color: #484849; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.2);"></div>`,
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
-});
+function createSelectedStopIcon(color: string): L.DivIcon {
+  return L.divIcon({
+    className: 'bg-transparent',
+    html: `<div style="width: 16px; height: 16px; background-color: ${color}; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 10px rgba(0,0,0,0.4);"></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+}
+
+function createUserLocationIcon(color: string): L.DivIcon {
+  return L.divIcon({
+    className: 'bg-transparent',
+    html: `<div style="width: 18px; height: 18px; background-color: ${color}; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.2);"></div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Live vehicle types + helpers
@@ -131,12 +147,6 @@ function getHeadingForBus(
   return bearing;
 }
 
-// Body colours — both clearly grey, distinguishable from each other.
-const BUS_COLORS = {
-  outbound: '#374151', // gray-700 — darker grey
-  inbound:  '#6B7280', // gray-500 — lighter grey
-};
-
 /**
  * Builds a Leaflet DivIcon with a side-view bus silhouette (faces RIGHT by
  * default — corresponds to compass bearing 90°/east). The wrapper div is
@@ -146,13 +156,15 @@ const BUS_COLORS = {
  * SVG layout (viewBox 0 0 80 50, facing right):
  *   rect body + 3 side windows + 2 wheels with hub dots.
  */
-function createBusIcon(heading: number | null, directionId: number): L.DivIcon {
-  const fill  = directionId === 0 ? BUS_COLORS.outbound : BUS_COLORS.inbound;
+function createBusIcon(heading: number | null, directionId: number, color: string, stale = false): L.DivIcon {
+  // Stale: grey + very faded. Outbound: full opacity. Inbound: 75%.
+  const fill = stale ? '#9CA3AF' : color;
+  const opacity = stale ? 0.35 : (directionId === 0 ? 1 : 0.75);
   const rotateDeg = heading !== null ? heading - 90 : 0;
 
   // viewBox 0 0 80 50, rendered at 40×25 px. Front = right side.
   // Minimal design: rounded-rect body, 3 side windows, 2 wheels with hub dot.
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 50" width="40" height="25">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 50" width="40" height="25" opacity="${opacity}">
 
     <!-- Body -->
     <rect x="1" y="2" width="78" height="30" rx="5"
@@ -317,7 +329,7 @@ function RecenterControl({
   return (
     <button 
       onClick={handleRecenter}
-      className="absolute bottom-[55vh] md:bottom-8 right-4 md:right-8 z-[400] bg-white p-3 rounded-full shadow-md text-gray-600 hover:text-black transition-all border border-gray-200"
+      className="absolute bottom-[55vh] md:bottom-8 right-4 md:right-8 z-[400] bg-white dark:bg-[var(--bg-sidebar)] p-3 rounded-full shadow-md text-gray-500 dark:text-[var(--text-muted)] hover:text-gray-800 dark:hover:text-[var(--text-primary)] transition-all border border-gray-200 dark:border-[var(--border-subtle)]"
     >
       <LocateFixed size={24} />
     </button>
@@ -331,18 +343,25 @@ interface LiveMapProps {
   onStopClick: (stop: Stop) => void;
   onResetToHome: () => void;
   isSheetOpen: boolean;
+  isDarkMode?: boolean;
 }
 
-export default function LiveMap({ selectedStop, selectedRoute, routeStops, onStopClick, onResetToHome, isSheetOpen }: LiveMapProps) {
+export default function LiveMap({ selectedStop, selectedRoute, routeStops, onStopClick, onResetToHome, isSheetOpen, isDarkMode = false }: LiveMapProps) {
   const [userLocation, setUserLocation] = useState<[number, number]>(FSKTM_POSITION);
   const [hasUserLocation, setHasUserLocation] = useState(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
+
+  // Tracks how many consecutive polls each vehicle hasn't moved.
+  // threshold: 6 polls × 15 s = 90 s (covers 3 backend cycles of 30 s each).
+  const posHistoryRef = useRef<Map<string, { lat: number; lng: number; unchanged: number }>>(new Map());
 
   // Poll live vehicle positions every 15 s while a route is selected.
-  // setVehicles is only called inside the async callback to satisfy
-  // the react-hooks/set-state-in-effect lint rule.
   useEffect(() => {
-    if (!selectedRoute) return;
+    if (!selectedRoute) {
+      posHistoryRef.current.clear();
+      return;
+    }
 
     let cancelled = false;
     const fetchVehicles = async () => {
@@ -352,7 +371,33 @@ export default function LiveMap({ selectedStop, selectedRoute, routeStops, onSto
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: Vehicle[] = await res.json();
-        if (!cancelled) setVehicles(data);
+        if (cancelled) return;
+
+        const history = posHistoryRef.current;
+        const nextStale = new Set<string>();
+
+        for (const v of data) {
+          const prev = history.get(v.vehicleId);
+          const moved = !prev
+            || Math.abs(v.latitude  - prev.lat) > 0.00003
+            || Math.abs(v.longitude - prev.lng) > 0.00003;
+
+          if (moved) {
+            history.set(v.vehicleId, { lat: v.latitude, lng: v.longitude, unchanged: 0 });
+          } else {
+            const count = (prev?.unchanged ?? 0) + 1;
+            history.set(v.vehicleId, { lat: v.latitude, lng: v.longitude, unchanged: count });
+            if (count >= 6) nextStale.add(v.vehicleId);
+          }
+        }
+
+        // Remove departed vehicles from history
+        for (const id of history.keys()) {
+          if (!data.find(v => v.vehicleId === id)) history.delete(id);
+        }
+
+        setVehicles(data);
+        setStaleIds(nextStale);
       } catch (err) {
         console.error('Failed to fetch vehicles:', err);
       }
@@ -380,9 +425,15 @@ export default function LiveMap({ selectedStop, selectedRoute, routeStops, onSto
   }, []);
 
   const polylineCoords: [number, number][] = routeStops.map(stop => [stop.latitude, stop.longitude]);
+  const lineColor = isDarkMode ? DARK_ACCENT : LIGHT_LINE;
+  const dotColor = isDarkMode ? DARK_ACCENT : LIGHT_DOT;
+  const routeColor = lineColor;
+  const stopIcon = createStopIcon(dotColor);
+  const selectedStopIcon = createSelectedStopIcon(dotColor);
+  const userLocationIcon = createUserLocationIcon(dotColor);
 
   return (
-    <div className="relative w-full h-full bg-gray-100">
+    <div className="relative w-full h-full bg-gray-100 dark:bg-[var(--bg-map)]">
       <MapContainer 
         center={userLocation} 
         zoom={15} 
@@ -390,7 +441,10 @@ export default function LiveMap({ selectedStop, selectedRoute, routeStops, onSto
         zoomControl={false} 
       >
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          key={isDarkMode ? 'tiles-dark' : 'tiles-light'}
+          url={isDarkMode
+            ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"}
           attribution='&copy; OSM & CARTO'
         />
         
@@ -403,29 +457,33 @@ export default function LiveMap({ selectedStop, selectedRoute, routeStops, onSto
         />
         
         {polylineCoords.length > 0 && (
-          <Polyline 
-            positions={polylineCoords} 
-            color="#374151" 
-            weight={4} 
-            opacity={0.8} 
-            dashArray="8, 6"
+          <Polyline
+            key={`route-line-${routeColor}`}
+            positions={polylineCoords}
+            pathOptions={{
+              color: routeColor,
+              weight: 4,
+              opacity: 0.9,
+              dashArray: "8, 6",
+            }}
           />
         )}
 
         {routeStops.map((stop, index) => (
           <CircleMarker
-            key={`${stop.id}-${index}`}
+            key={`${stop.id}-${index}-${dotColor}`}
             center={[stop.latitude, stop.longitude]}
             radius={5}
-            pathOptions={{ color: 'white', fillColor: '#374151', fillOpacity: 1, weight: 2 }}
+            pathOptions={{ color: 'white', fillColor: dotColor, fillOpacity: 1, weight: 2 }}
             eventHandlers={{ click: () => onStopClick(stop) }}
           />
         ))}
 
         {selectedStop && (
           <Marker
+            key={`selected-stop-${selectedStop.id}-${dotColor}`}
             position={[selectedStop.latitude, selectedStop.longitude]}
-            icon={MinimalGrayIcon}
+            icon={selectedStopIcon}
             eventHandlers={{ click: () => onStopClick(selectedStop) }}
           >
             <Tooltip permanent direction="top" offset={[0, -10]}>
@@ -446,9 +504,9 @@ export default function LiveMap({ selectedStop, selectedRoute, routeStops, onSto
           );
           return (
             <Marker
-              key={vehicle.vehicleId}
+              key={`${vehicle.vehicleId}-${routeColor}`}
               position={[snapped.lat, snapped.lng]}
-              icon={createBusIcon(heading, vehicle.directionId)}
+              icon={createBusIcon(heading, vehicle.directionId, routeColor, staleIds.has(vehicle.vehicleId))}
             >
               <Popup>
                 <strong>{vehicle.licensePlate}</strong><br />
@@ -459,11 +517,11 @@ export default function LiveMap({ selectedStop, selectedRoute, routeStops, onSto
         })}
 
         {hasUserLocation && (
-          <Marker position={userLocation} icon={UserLocationIcon} />
+          <Marker key={`user-location-${dotColor}`} position={userLocation} icon={userLocationIcon} />
         )}
 
         {!selectedStop && !selectedRoute && !hasUserLocation && (
-          <Marker position={FSKTM_POSITION} icon={MinimalGrayIcon}>
+          <Marker key={`fallback-stop-${dotColor}`} position={FSKTM_POSITION} icon={stopIcon}>
             <Popup>FSKTM, Universiti Malaya (Default)</Popup>
           </Marker>
         )}
