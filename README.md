@@ -143,13 +143,16 @@ where-bus/
         │   ├── LiveMap.tsx             # Leaflet map with live bus positions
         │   ├── SearchBar.tsx           # Stop and route search input
         │   └── SearchResultsPanel.tsx  # Search results dropdown
+        ├── lib/
+        │   └── routeColors.ts          # Route color mapping and utilities
+        ├── .env                        # Local environment variables (typically git-ignored)
         ├── .env.example                # Environment variable template
-        ├── .gitignore
+        ├── .gitignore                  # Git ignore rules
         ├── eslint.config.mjs           # Linting config
         ├── next-env.d.ts               # Next.js TypeScript declarations
         ├── next.config.ts              # Next.js config and API proxy rewrites
-        ├── package.json
-        ├── package-lock.json
+        ├── package-lock.json           # Exact dependency tree lockfile
+        ├── package.json                # Project metadata and dependencies
         ├── postcss.config.mjs          # PostCSS config for Tailwind
         └── tsconfig.json               # TypeScript config
 ```
